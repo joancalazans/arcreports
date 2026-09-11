@@ -45,45 +45,55 @@ A coluna “Testado em” identifica o ambiente inventariado em 10/09/2026; inst
 
 ### Instalação rápida
 
-A instalação é híbrida: o operador prepara a infraestrutura e ativa o serviço; [install.sh](install.sh) automatiza a parte da aplicação e o provisionamento do MariaDB local. O script deve ser executado como root. Ele cria automaticamente o usuário `ia-dev` — dono do projeto, dos arquivos, do venv e do serviço systemd — sem senha de login direto. Para acessar manualmente: `sudo su - ia-dev`. Operações da aplicação (venv, `.env`, Alembic) são executadas internamente como `ia-dev` via `runuser`. O script não configura firewall nem SELinux automaticamente, mas exibe instruções ao final quando detecta firewalld ou ufw ativos.
+A instalação é totalmente automatizada. O script deve ser executado como root em um servidor limpo com acesso à internet.
 
-1. Execute o instalador como root em um servidor com RHEL 9.x, Rocky, AlmaLinux, Fedora 38+, Ubuntu 22.04+ ou Debian 11+. O script verifica e instala Python 3.9+, MariaDB 10.5+ e Nginx 1.18+ via `dnf` ou `apt-get` automaticamente se necessário, cria o usuário `ia-dev` (sem senha de login direto) e prepara o diretório `/opt/sites/glpi-portal`.
-2. Prepare uma credencial DBA **não root**, já autorizada no MariaDB local, em arquivo privado de `ia-dev` com modo `0600`. Exemplo de conteúdo (formato INI; senha literal sem aspas):
+**Instalação em 3 comandos:**
 
-   ```ini
-   [client]
-   host=localhost
-   port=3306
-   user=dba_instalacao
-   password=SENHA_FORTE_AQUI
-   ```
+```bash
+git clone https://github.com/joancalazans/arcreports.git \
+  /opt/sites/glpi-portal
+cd /opt/sites/glpi-portal
+sudo bash install.sh
+```
 
-3. Como root, clone e execute:
+O script executa automaticamente:
 
-   ```bash
-   git clone https://github.com/joancalazans/arcreports.git \
-     /opt/sites/glpi-portal
-   cd /opt/sites/glpi-portal
-   sudo bash install.sh
-   ```
+- Detecta a distribuição (RHEL/Fedora ou Ubuntu/Debian) e instala Python 3.9+, MariaDB 10.5+ e Nginx 1.18+ se necessário
+- Cria o usuário `ia-dev` sem senha de login direto (acesso via `sudo su - ia-dev`)
+- Configura MariaDB: banco `reports`, três contas e grants necessários
+- Cria venv Python e instala dependências
+- Solicita interativamente apenas:
+  - Senha do MariaDB root (Enter para unix_socket sem senha)
+  - Três senhas para as contas de banco
+  - `ADMIN_USERNAME` e `ADMIN_PASSWORD` do administrador do portal
+- Gera `SECRET_KEY` automaticamente (nunca sobrescrita em atualizações)
+- Configura Nginx e systemd
+- Inicia o serviço arcreports
 
-   Ou com credencial DBA personalizada:
+Após a instalação, acesse pelo IP do servidor na porta 80. Use `sudo bash install.sh --verify` para verificar se o serviço está respondendo.
 
-   ```bash
-   sudo INSTALL_DB_CNF=/caminho/bootstrap.cnf \
-     bash install.sh
-   ```
+**Instalação com credencial DBA personalizada (opcional):**
 
-   Informe somente as três senhas de banco, `ADMIN_USERNAME` e `ADMIN_PASSWORD` quando solicitado. A `SECRET_KEY` é gerada automaticamente uma única vez.
+Se preferir não usar o root do MariaDB, prepare um arquivo privado modo `0600` com uma conta DBA já autorizada:
 
-4. Entregue ao operador `docs/install_operator_steps.txt`, gerado pela preparação, e os exemplos [Nginx](docs/nginx.example.conf) e [systemd](docs/arcreports.service.example). O operador deve revisar hostname/TLS, atualizar configurações existentes sem duplicá-las e ativar o serviço com **um worker**.
-5. Depois da ativação, execute `bash install.sh --verify`. Na v0.1.0 não existe `/health`: o script identifica o 404 e exige HTTP 200 em `/login`. Essa checagem não comprova login, banco, exportações ou ETL; valide esses fluxos pela interface. Use o hostname configurado no Nginx (ou IP se o operador configurar esse acesso).
+```ini
+[client]
+host=localhost
+port=3306
+user=dba_instalacao
+password=SENHA_FORTE_AQUI
+```
 
-O instalador cria o schema ORM em banco vazio antes do baseline. `alembic stamp head` sozinho **não cria tabelas**. Bancos existentes sem versão só recebem o stamp se o schema coincidir com o ORM e a revisão disponível for a baseline `74d249fd4a23`. Bancos versionados com migrações pendentes exigem aplicação revisada pelo operador; o script não usa stamp para pular migrações.
+E execute:
 
-Para atualização: faça backup externo, solicite parada do serviço, disponibilize o código revisado preservando `.env`, `local.env`, `ldap.env`, `logs/`, `snapshots/` e `static/uploads/`; execute `bash install.sh` e repita a ativação/verificação. Sem `INSTALL_DB_CNF`, o provisionamento usa a conta administrativa do `.env`. Contas existentes mantêm as senhas; credencial divergente interrompe a preparação. A confirmação sobre `.env` permite apenas completar chaves ausentes, com cópia privada de backup; recusar mantém o arquivo intacto. Não há rollback automático de dependências ou DDL. Para migrações entre versões, siga o [workflow Alembic](docs/alembic_workflow.md).
+```bash
+sudo INSTALL_DB_CNF=/caminho/bootstrap.cnf \
+  bash install.sh
+```
 
-Para instalar sem internet, use `PIP_NO_INDEX=1 PIP_FIND_LINKS=/caminho/wheels bash install.sh`, com todas as dependências compatíveis previamente disponíveis. Use `pip install -r requirements.txt`: o empacotamento via `pip install .` e o entry point do `pyproject.toml` não estão homologados.
+**Atualização:**
+
+Faça backup externo, pare o serviço, atualize o código preservando `.env`, `local.env`, `ldap.env`, `logs/`, `snapshots/` e `static/uploads/`, execute `bash install.sh` novamente.
 
 ### Configuração
 
@@ -224,45 +234,55 @@ Offline means no external internet during operation. Replication requires networ
 
 ### Quick installation
 
-Installation is hybrid: the operator prepares infrastructure and activates the service; [install.sh](install.sh) automates application preparation and local MariaDB provisioning. The script must be run as root. It automatically creates the `ia-dev` user—the owner of the project, files, virtual environment and systemd service—without a password for direct login. For manual access, use `sudo su - ia-dev`. Application operations (virtual environment, `.env`, Alembic) run internally as `ia-dev` through `runuser`. The script does not configure the firewall or SELinux automatically, but displays instructions at the end when it detects an active firewalld or ufw service.
+Installation is fully automated. The script must be run as root on a clean server with internet access.
 
-1. Run the installer as root on a server with RHEL 9.x, Rocky, AlmaLinux, Fedora 38+, Ubuntu 22.04+ or Debian 11+. The script checks and automatically installs Python 3.9+, MariaDB 10.5+ and Nginx 1.18+ through `dnf` or `apt-get` when necessary, creates the `ia-dev` user (without a password for direct login), and prepares `/opt/sites/glpi-portal`.
-2. Prepare a **non-root** DBA credential already authorized on local MariaDB in a private file owned by `ia-dev`, mode `0600`. Example contents (INI format; literal password without quotes):
+**Installation in 3 commands:**
 
-   ```ini
-   [client]
-   host=localhost
-   port=3306
-   user=dba_instalacao
-   password=YOUR_STRONG_PASSWORD
-   ```
+```bash
+git clone https://github.com/joancalazans/arcreports.git \
+  /opt/sites/glpi-portal
+cd /opt/sites/glpi-portal
+sudo bash install.sh
+```
 
-3. As root, clone and run:
+The script automatically:
 
-   ```bash
-   git clone https://github.com/joancalazans/arcreports.git \
-     /opt/sites/glpi-portal
-   cd /opt/sites/glpi-portal
-   sudo bash install.sh
-   ```
+- Detects the distribution (RHEL/Fedora or Ubuntu/Debian) and installs Python 3.9+, MariaDB 10.5+ and Nginx 1.18+ when needed
+- Creates the `ia-dev` user without a password for direct login (access through `sudo su - ia-dev`)
+- Configures MariaDB: the `reports` database, three accounts and the required grants
+- Creates the Python virtual environment and installs dependencies
+- Prompts interactively only for:
+  - The MariaDB root password (press Enter for passwordless unix_socket authentication)
+  - Three passwords for the database accounts
+  - The portal administrator's `ADMIN_USERNAME` and `ADMIN_PASSWORD`
+- Generates `SECRET_KEY` automatically (never overwritten during upgrades)
+- Configures Nginx and systemd
+- Starts the arcreports service
 
-   Or with a custom DBA credential:
+After installation, access the server IP on port 80. Use `sudo bash install.sh --verify` to verify that the service is responding.
 
-   ```bash
-   sudo INSTALL_DB_CNF=/path/to/bootstrap.cnf \
-     bash install.sh
-   ```
+**Installation with a custom DBA credential (optional):**
 
-   Enter only the three database passwords, `ADMIN_USERNAME` and `ADMIN_PASSWORD` when prompted. `SECRET_KEY` is generated automatically only once.
+If you prefer not to use the MariaDB root account, prepare a private file with mode `0600` containing an already authorized DBA account:
 
-4. Give the operator `docs/install_operator_steps.txt`, generated during preparation, and the [Nginx](docs/nginx.example.conf) and [systemd](docs/arcreports.service.example) examples. The operator must review hostname/TLS, update existing configurations without duplication, and activate the service with **one worker**.
-5. After activation, run `bash install.sh --verify`. Version 0.1.0 has no `/health`: the script detects 404 and requires HTTP 200 from `/login`. This does not verify authentication, database access, exports or ETL; validate those through the UI. Use the configured Nginx hostname (or IP if the operator enables that access).
+```ini
+[client]
+host=localhost
+port=3306
+user=dba_instalacao
+password=YOUR_STRONG_PASSWORD
+```
 
-The installer creates the ORM schema in an empty database before the baseline. `alembic stamp head` alone **does not create tables**. Existing unversioned databases are stamped only if their schema matches the ORM and the available revision is baseline `74d249fd4a23`. Versioned databases with pending migrations require reviewed application by the operator; the script never uses stamp to skip migrations.
+Then run:
 
-For upgrades: make an external backup, request service shutdown, place the reviewed code while preserving `.env`, `local.env`, `ldap.env`, `logs/`, `snapshots/` and `static/uploads/`; run `bash install.sh` and repeat activation/verification. Without `INSTALL_DB_CNF`, provisioning uses the administrative account from `.env`. Existing accounts keep their passwords; mismatched credentials stop preparation. The `.env` confirmation only fills missing keys and creates a private backup; declining leaves the file intact. There is no automatic dependency or DDL rollback. For migrations between versions, follow the [Alembic workflow](docs/alembic_workflow.md).
+```bash
+sudo INSTALL_DB_CNF=/path/to/bootstrap.cnf \
+  bash install.sh
+```
 
-For installation without internet, use `PIP_NO_INDEX=1 PIP_FIND_LINKS=/path/to/wheels bash install.sh` with all compatible dependencies already available. Use `pip install -r requirements.txt`: packaging through `pip install .` and the `pyproject.toml` entry point have not been qualified.
+**Upgrade:**
+
+Make an external backup, stop the service, update the code while preserving `.env`, `local.env`, `ldap.env`, `logs/`, `snapshots/` and `static/uploads/`, then run `bash install.sh` again.
 
 ### Configuration
 

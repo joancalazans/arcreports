@@ -98,3 +98,4 @@ Thumbs.db
 /tests/test_system_health.py
 /docs/alembic_workflow.md
 !/docs/impl_install_hibrido_2026-09-10.md
+!/README.md

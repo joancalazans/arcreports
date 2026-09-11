@@ -86,8 +86,6 @@ Thumbs.db
 
 # Itens ainda sensíveis conforme a triagem de 2026-09-10
 /README.md
-/app/routes/sql_console.py
-/app/routes/system_health.py
 /tests/test_audit_csv.py
 /tests/test_dashboard_sources.py
 /tests/test_db_users.py

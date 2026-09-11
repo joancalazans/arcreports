@@ -33,7 +33,10 @@ Offline significa sem internet externa durante o uso. Replicação exige acesso 
 
 | Componente | Versão mínima | Testado em |
 |---|---|---|
-| RHEL/Rocky/AlmaLinux | 9.x | RHEL 9.8 |
+| RHEL / Rocky / AlmaLinux | 9.x | RHEL 9.8 |
+| Fedora | 38+ | — |
+| Ubuntu | 22.04 LTS+ | — |
+| Debian | 11+ | — |
 | Python | 3.9 | 3.9.25 |
 | MariaDB | 10.5 | 10.5.29 |
 | Nginx | 1.18 | 1.20.1 |
@@ -42,9 +45,9 @@ A coluna “Testado em” identifica o ambiente inventariado em 10/09/2026; inst
 
 ### Instalação rápida
 
-A instalação é híbrida: o operador prepara a infraestrutura e ativa o serviço; [install.sh](install.sh) automatiza a parte da aplicação e o provisionamento do MariaDB local. O script exige a sessão de `ia-dev`, nunca root, e não altera Linux, Nginx, systemd, firewall ou SELinux.
+A instalação é híbrida: o operador prepara a infraestrutura e ativa o serviço; [install.sh](install.sh) automatiza a parte da aplicação e o provisionamento do MariaDB local. O script deve ser executado como root. Ele cria automaticamente o usuário `ia-dev` — dono do projeto, dos arquivos, do venv e do serviço systemd — sem senha de login direto. Para acessar manualmente: `sudo su - ia-dev`. Operações da aplicação (venv, `.env`, Alembic) são executadas internamente como `ia-dev` via `runuser`. O script não configura firewall nem SELinux automaticamente, mas exibe instruções ao final quando detecta firewalld ou ufw ativos.
 
-1. Solicite ao operador os pré-requisitos, a conta `ia-dev` e `/opt/sites/glpi-portal` gravável por essa conta. Copie ou clone o código da versão revisada nesse caminho. O instalador exige esse caminho porque logs e snapshots ainda usam caminhos absolutos no core.
+1. Execute o instalador como root em um servidor com RHEL 9.x, Rocky, AlmaLinux, Fedora 38+, Ubuntu 22.04+ ou Debian 11+. O script verifica e instala Python 3.9+, MariaDB 10.5+ e Nginx 1.18+ via `dnf` ou `apt-get` automaticamente se necessário, cria o usuário `ia-dev` (sem senha de login direto) e prepara o diretório `/opt/sites/glpi-portal`.
 2. Prepare uma credencial DBA **não root**, já autorizada no MariaDB local, em arquivo privado de `ia-dev` com modo `0600`. Exemplo de conteúdo (formato INI; senha literal sem aspas):
 
    ```ini
@@ -55,14 +58,23 @@ A instalação é híbrida: o operador prepara a infraestrutura e ativa o servi�
    password=SENHA_FORTE_AQUI
    ```
 
-3. Na sessão de `ia-dev`, execute:
+3. Como root, clone e execute:
 
    ```bash
+   git clone https://github.com/joancalazans/arcreports.git \
+     /opt/sites/glpi-portal
    cd /opt/sites/glpi-portal
-   INSTALL_DB_CNF=/caminho/privado/bootstrap.cnf bash install.sh
+   sudo bash install.sh
    ```
 
-   Informe somente as três senhas de banco, `ADMIN_USERNAME` e `ADMIN_PASSWORD`. Use senhas próprias com pelo menos 16 caracteres. A `SECRET_KEY` é gerada uma única vez. O script não importa credenciais da origem e não executa SQL no GLPI.
+   Ou com credencial DBA personalizada:
+
+   ```bash
+   sudo INSTALL_DB_CNF=/caminho/bootstrap.cnf \
+     bash install.sh
+   ```
+
+   Informe somente as três senhas de banco, `ADMIN_USERNAME` e `ADMIN_PASSWORD` quando solicitado. A `SECRET_KEY` é gerada automaticamente uma única vez.
 
 4. Entregue ao operador `docs/install_operator_steps.txt`, gerado pela preparação, e os exemplos [Nginx](docs/nginx.example.conf) e [systemd](docs/arcreports.service.example). O operador deve revisar hostname/TLS, atualizar configurações existentes sem duplicá-las e ativar o serviço com **um worker**.
 5. Depois da ativação, execute `bash install.sh --verify`. Na v0.1.0 não existe `/health`: o script identifica o 404 e exige HTTP 200 em `/login`. Essa checagem não comprova login, banco, exportações ou ETL; valide esses fluxos pela interface. Use o hostname configurado no Nginx (ou IP se o operador configurar esse acesso).
@@ -200,7 +212,10 @@ Offline means no external internet during operation. Replication requires networ
 
 | Component | Minimum version | Tested on |
 |---|---|---|
-| RHEL/Rocky/AlmaLinux | 9.x | RHEL 9.8 |
+| RHEL / Rocky / AlmaLinux | 9.x | RHEL 9.8 |
+| Fedora | 38+ | — |
+| Ubuntu | 22.04 LTS+ | — |
+| Debian | 11+ | — |
 | Python | 3.9 | 3.9.25 |
 | MariaDB | 10.5 | 10.5.29 |
 | Nginx | 1.18 | 1.20.1 |
@@ -209,9 +224,9 @@ Offline means no external internet during operation. Replication requires networ
 
 ### Quick installation
 
-Installation is hybrid: the operator prepares infrastructure and activates the service; [install.sh](install.sh) automates application preparation and local MariaDB provisioning. The script requires an `ia-dev` session, never root, and does not change Linux, Nginx, systemd, firewall or SELinux.
+Installation is hybrid: the operator prepares infrastructure and activates the service; [install.sh](install.sh) automates application preparation and local MariaDB provisioning. The script must be run as root. It automatically creates the `ia-dev` user—the owner of the project, files, virtual environment and systemd service—without a password for direct login. For manual access, use `sudo su - ia-dev`. Application operations (virtual environment, `.env`, Alembic) run internally as `ia-dev` through `runuser`. The script does not configure the firewall or SELinux automatically, but displays instructions at the end when it detects an active firewalld or ufw service.
 
-1. Ask the operator to prepare prerequisites, the `ia-dev` account and `/opt/sites/glpi-portal` writable by that account. Copy or clone the reviewed release there. This path is mandatory because logs and snapshots still use absolute paths in the core.
+1. Run the installer as root on a server with RHEL 9.x, Rocky, AlmaLinux, Fedora 38+, Ubuntu 22.04+ or Debian 11+. The script checks and automatically installs Python 3.9+, MariaDB 10.5+ and Nginx 1.18+ through `dnf` or `apt-get` when necessary, creates the `ia-dev` user (without a password for direct login), and prepares `/opt/sites/glpi-portal`.
 2. Prepare a **non-root** DBA credential already authorized on local MariaDB in a private file owned by `ia-dev`, mode `0600`. Example contents (INI format; literal password without quotes):
 
    ```ini
@@ -222,14 +237,23 @@ Installation is hybrid: the operator prepares infrastructure and activates the s
    password=YOUR_STRONG_PASSWORD
    ```
 
-3. In the `ia-dev` session, run:
+3. As root, clone and run:
 
    ```bash
+   git clone https://github.com/joancalazans/arcreports.git \
+     /opt/sites/glpi-portal
    cd /opt/sites/glpi-portal
-   INSTALL_DB_CNF=/private/path/bootstrap.cnf bash install.sh
+   sudo bash install.sh
    ```
 
-   Enter only the three database passwords, `ADMIN_USERNAME` and `ADMIN_PASSWORD`. Use unique passwords of at least 16 characters. `SECRET_KEY` is generated once. The script does not import source credentials or execute SQL on GLPI.
+   Or with a custom DBA credential:
+
+   ```bash
+   sudo INSTALL_DB_CNF=/path/to/bootstrap.cnf \
+     bash install.sh
+   ```
+
+   Enter only the three database passwords, `ADMIN_USERNAME` and `ADMIN_PASSWORD` when prompted. `SECRET_KEY` is generated automatically only once.
 
 4. Give the operator `docs/install_operator_steps.txt`, generated during preparation, and the [Nginx](docs/nginx.example.conf) and [systemd](docs/arcreports.service.example) examples. The operator must review hostname/TLS, update existing configurations without duplication, and activate the service with **one worker**.
 5. After activation, run `bash install.sh --verify`. Version 0.1.0 has no `/health`: the script detects 404 and requires HTTP 200 from `/login`. This does not verify authentication, database access, exports or ETL; validate those through the UI. Use the configured Nginx hostname (or IP if the operator enables that access).

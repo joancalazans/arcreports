@@ -327,11 +327,13 @@ detect_install_mode() {
 
 # --- Criar usuário e diretório ---
 create_service_user() {
-    if id "$SERVICE_USER" >/dev/null 2>&1; then
-        ok "Usuário $SERVICE_USER já existe"
+    if ! id "$SERVICE_USER" &>/dev/null; then
+        useradd -m -s /bin/bash "$SERVICE_USER" \
+            || adduser --disabled-password --gecos "" "$SERVICE_USER"
+        ok "Usuário $SERVICE_USER criado (sem senha de login direto)"
+        ok "Para acessar: sudo su - $SERVICE_USER"
     else
-        useradd -m -s /bin/bash "$SERVICE_USER"
-        ok "Usuário $SERVICE_USER criado"
+        ok "Usuário $SERVICE_USER já existe"
     fi
 }
 
@@ -584,6 +586,11 @@ print_summary() {
     echo " Usuário: ADMIN_USERNAME de local.env"
     echo " Logs: $INSTALL_DIR/logs/"
     echo " Snapshots: $INSTALL_DIR/snapshots/"
+    echo ""
+    echo "  Usuário do serviço: $SERVICE_USER"
+    echo "  Acesso manual: sudo su - $SERVICE_USER"
+    echo "  Senha: não definida (acesso"
+    echo "         apenas via sudo)"
     echo "=================================="
 }
 

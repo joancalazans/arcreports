@@ -92,7 +92,17 @@ sudo INSTALL_DB_CNF=/caminho/bootstrap.cnf \
 
 **Atualização:**
 
-Faça backup externo, pare o serviço, atualize o código preservando `.env`, `local.env`, `ldap.env`, `logs/`, `snapshots/` e `static/uploads/`, execute `bash install.sh` novamente.
+Faça backup externo, pare o serviço e preserve `.env`, `local.env`, `ldap.env`, `logs/`, `snapshots/` e `static/uploads/`.
+
+**Para atualizar:**
+
+```bash
+git config --global --add safe.directory \
+  /opt/sites/arcreports
+cd /opt/sites/arcreports
+git pull
+sudo bash install.sh
+```
 
 ### Configuração
 
@@ -280,7 +290,17 @@ sudo INSTALL_DB_CNF=/path/to/bootstrap.cnf \
 
 **Upgrade:**
 
-Make an external backup, stop the service, update the code while preserving `.env`, `local.env`, `ldap.env`, `logs/`, `snapshots/` and `static/uploads/`, then run `bash install.sh` again.
+Make an external backup, stop the service, and preserve `.env`, `local.env`, `ldap.env`, `logs/`, `snapshots/` and `static/uploads/`.
+
+**To update:**
+
+```bash
+git config --global --add safe.directory \
+  /opt/sites/arcreports
+cd /opt/sites/arcreports
+git pull
+sudo bash install.sh
+```
 
 ### Configuration
 

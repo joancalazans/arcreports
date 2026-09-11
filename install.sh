@@ -670,19 +670,47 @@ verify_install() {
 
 # --- Resumo final ---
 print_summary() {
-    echo "=================================="
-    echo " ArcReports instalado com sucesso"
-    echo "=================================="
-    echo " URL: http://SEU_IP"
-    echo " Usuário: ADMIN_USERNAME de local.env"
-    echo " Logs: $INSTALL_DIR/logs/"
-    echo " Snapshots: $INSTALL_DIR/snapshots/"
-    echo ""
-    echo "  Usuário do serviço: $SERVICE_USER"
-    echo "  Acesso manual: sudo su - $SERVICE_USER"
-    echo "  Senha: não definida (acesso"
-    echo "         apenas via sudo)"
-    echo "=================================="
+    local LOCAL_IP ADMIN_USERNAME
+
+    # Obter IP da máquina automaticamente
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+    ADMIN_USERNAME=$(runuser -u "$SERVICE_USER" -- \
+        "$INSTALL_DIR/venv/bin/python" -c \
+        'import sys; from dotenv import dotenv_values; print(dotenv_values(sys.argv[1], interpolate=False).get("ADMIN_USERNAME", "admin"))' \
+        "$INSTALL_DIR/local.env")
+
+    printf "\n"
+    printf "╔══════════════════════════════════════╗\n"
+    printf "║   ArcReports instalado com sucesso!  ║\n"
+    printf "╚══════════════════════════════════════╝\n"
+    printf "\n"
+    printf "  Acesso ao portal:\n"
+    printf "  → http://localhost\n"
+    printf "  → http://127.0.0.1\n"
+    printf "  → http://%s\n" "$LOCAL_IP"
+    printf "\n"
+    printf "  Credenciais de acesso:\n"
+    printf "  Usuário: %s\n" "$ADMIN_USERNAME"
+    printf "  Senha:   (a que você definiu)\n"
+    printf "\n"
+    printf "  Diretório: %s\n" "$INSTALL_DIR"
+    printf "  Logs:      %s/logs/\n" "$INSTALL_DIR"
+    printf "  Snapshots: %s/snapshots/\n" "$INSTALL_DIR"
+    printf "\n"
+    printf "  Usuário do serviço: ia-dev\n"
+    printf "  Acesso manual: sudo su - ia-dev\n"
+    printf "\n"
+    printf "  Para atualizar:\n"
+    printf "  git config --global --add\n"
+    printf "    safe.directory %s\n" "$INSTALL_DIR"
+    printf "  cd %s && git pull\n" "$INSTALL_DIR"
+    printf "  sudo bash install.sh\n"
+    printf "\n"
+    printf "  Serviço:\n"
+    printf "  systemctl status arcreports\n"
+    printf "  systemctl restart arcreports\n"
+    printf "  journalctl -u arcreports -f\n"
+    printf "\n"
 }
 
 # --- Fluxo principal ---
@@ -699,6 +727,9 @@ main() {
     check_or_install_mysqldump
     create_service_user
     create_install_dir
+    git config --global \
+        --add safe.directory "$INSTALL_DIR" \
+        2>/dev/null || true
     configure_platform_security
     setup_venv
     setup_env

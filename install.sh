@@ -36,6 +36,65 @@ ok()   { printf "${GREEN}✓${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}⚠${NC} %s\n" "$1"; }
 fail() { printf "${RED}✗${NC} %s\n" "$1" >&2; exit 1; }
 
+validate_password() {
+    local pass="$1"
+    local valid=true
+
+    if [[ ${#pass} -lt 8 ]]; then
+        warn "Senha deve ter pelo menos 8 caracteres."
+        valid=false
+    fi
+    if ! [[ "$pass" =~ [A-Z] ]]; then
+        warn "Senha deve ter pelo menos 1 letra maiúscula."
+        valid=false
+    fi
+    if ! [[ "$pass" =~ [a-z] ]]; then
+        warn "Senha deve ter pelo menos 1 letra minúscula."
+        valid=false
+    fi
+    if ! [[ "$pass" =~ [0-9] ]]; then
+        warn "Senha deve ter pelo menos 1 número."
+        valid=false
+    fi
+    [[ "$valid" == true ]]
+}
+
+prompt_password() {
+    local prompt="$1"
+    local password confirmation
+
+    while true; do
+        printf "\n"
+        printf "Requisitos: mínimo 8 caracteres,\n"
+        printf "  1 maiúscula, 1 minúscula,\n"
+        printf "  1 número\n"
+        printf "  (ex: Arcdata1)\n"
+        printf "%s" "$prompt"
+        read -r -s password </dev/tty
+        printf "\n"
+        printf "Confirme a senha: "
+        read -r -s confirmation </dev/tty
+        printf "\n"
+        if [[ "$password" != "$confirmation" ]]; then
+            warn "Senhas não coincidem. Tente novamente."
+            continue
+        fi
+        if validate_password "$password"; then
+            REPLY="$password"
+            return
+        fi
+    done
+}
+
+prompt_database_password() {
+    local account="$1"
+    local description="$2"
+
+    printf "\n"
+    printf "Senha para conta de banco '%s'\n" "$account"
+    prompt_password "$description"
+}
+
 on_error() {
     local status=$?
     printf "${RED}✗${NC} Falha na linha %s (comando: %s).\n" "$1" "$2" >&2
@@ -308,7 +367,7 @@ detect_install_mode() {
         esac
     elif [[ -f "$INSTALL_DIR/.env" || -d "$INSTALL_DIR/venv" || -f /etc/systemd/system/arcreports.service ]]; then
         printf 'Instalação existente detectada. [N]ova instalação ou [U]pdate (recomendado)? '
-        read -r answer
+        read -r answer </dev/tty
         case "${answer,,}" in
             n|nova|new) INSTALL_MODE="new" ;;
             ''|u|update|atualizacao|atualização) INSTALL_MODE="update" ;;
@@ -339,13 +398,9 @@ create_service_user() {
 
 create_install_dir() {
     mkdir -p /opt/sites
-    if [[ -d "$INSTALL_DIR" ]]; then
-        ok "Diretório $INSTALL_DIR já existe"
-    else
-        mkdir -p "$INSTALL_DIR"
-        chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-        ok "Diretório $INSTALL_DIR criado"
-    fi
+    mkdir -p "$INSTALL_DIR"
+    chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+    ok "Diretório $INSTALL_DIR pronto"
     for file in requirements.txt .env.example local.env.example ldap.env.example alembic.ini docs/nginx.example.conf docs/arcreports.service.example; do
         [[ -r "$INSTALL_DIR/$file" ]] || fail "Arquivo necessário ausente: $INSTALL_DIR/$file. Copie o pacote ArcReports completo."
     done
@@ -372,8 +427,36 @@ setup_venv() {
 
 # --- Gerar .env ---
 setup_env() {
-    runuser -u "$SERVICE_USER" -- env INSTALL_DIR="$INSTALL_DIR" INSTALL_MODE="$INSTALL_MODE" "$INSTALL_DIR/venv/bin/python" <<'PY'
-import getpass, os, re, secrets
+    local overwrite_env=false local_db_pass local_db_admin_pass local_db_user_admin_pass answer
+
+    if [[ -f "$INSTALL_DIR/.env" && "$INSTALL_MODE" != update ]]; then
+        printf '.env já existe. Sobrescrever preservando a SECRET_KEY? [s/N] '
+        read -r answer </dev/tty
+        if [[ "${answer,,}" != s ]]; then
+            warn ".env existente mantido"
+            return
+        fi
+        overwrite_env=true
+    fi
+
+    if [[ ! -f "$INSTALL_DIR/.env" || "$INSTALL_MODE" != update ]]; then
+        prompt_database_password "$DB_APP_USER" "Senha da conta de operação do portal: "
+        local_db_pass="$REPLY"
+        prompt_database_password "$DB_ADMIN_USER" "Senha da conta administrativa do banco: "
+        local_db_admin_pass="$REPLY"
+        prompt_database_password "$DB_USER_ADMIN" "Senha da conta de gestão de usuários: "
+        local_db_user_admin_pass="$REPLY"
+    fi
+
+    runuser -u "$SERVICE_USER" -- env \
+        INSTALL_DIR="$INSTALL_DIR" \
+        INSTALL_MODE="$INSTALL_MODE" \
+        OVERWRITE_ENV="$overwrite_env" \
+        LOCAL_DB_PASS_INPUT="${local_db_pass:-}" \
+        LOCAL_DB_ADMIN_PASS_INPUT="${local_db_admin_pass:-}" \
+        LOCAL_DB_USER_ADMIN_PASS_INPUT="${local_db_user_admin_pass:-}" \
+        "$INSTALL_DIR/venv/bin/python" <<'PY'
+import os, re, secrets
 from pathlib import Path
 from dotenv import dotenv_values
 
@@ -384,24 +467,16 @@ def quote(value):
     if any(c in value for c in '\n\r\0'): raise SystemExit('ERRO: valor multilinha/NUL não permitido')
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
-def secret(label):
-    one = getpass.getpass(label + ': '); two = getpass.getpass('Confirme ' + label + ': ')
-    if one != two or len(one) < 16: raise SystemExit('ERRO: senhas devem coincidir e ter pelo menos 16 caracteres')
-    return one
-
 old_key = str(dotenv_values(target, interpolate=False).get('SECRET_KEY') or '') if target.exists() else ''
 if target.exists() and (not old_key or old_key == 'GERAR_COM_COMANDO_ACIMA'):
     raise SystemExit('ERRO: restaure a SECRET_KEY original no .env existente antes de continuar')
 if target.exists() and os.environ['INSTALL_MODE'] == 'update':
     print('✓ .env preservado integralmente no update, incluindo SECRET_KEY'); raise SystemExit
-overwrite = False
-if target.exists():
-    overwrite = input('.env já existe. Sobrescrever preservando a SECRET_KEY? [s/N] ').strip().lower() == 's'
-    if not overwrite: print('⚠ .env existente mantido'); raise SystemExit
+overwrite = os.environ['OVERWRITE_ENV'] == 'true'
 text = (base / '.env.example').read_text(encoding='utf-8')
-values = {'LOCAL_DB_PASS': secret('Senha de glpi_portal'),
-          'LOCAL_DB_ADMIN_PASS': secret('Senha de portal_db_admin'),
-          'LOCAL_DB_USER_ADMIN_PASS': secret('Senha de portal_db_user'),
+values = {'LOCAL_DB_PASS': os.environ['LOCAL_DB_PASS_INPUT'],
+          'LOCAL_DB_ADMIN_PASS': os.environ['LOCAL_DB_ADMIN_PASS_INPUT'],
+          'LOCAL_DB_USER_ADMIN_PASS': os.environ['LOCAL_DB_USER_ADMIN_PASS_INPUT'],
           'SECRET_KEY': old_key or secrets.token_urlsafe(48)}
 for key, value in values.items():
     line = key + '=' + quote(value); pattern = re.compile(rf'(?m)^{re.escape(key)}=.*$')
@@ -414,18 +489,33 @@ PY
 
 # --- Gerar local.env ---
 setup_local_env() {
-    runuser -u "$SERVICE_USER" -- env INSTALL_DIR="$INSTALL_DIR" "$PYTHON_BIN" <<'PY'
-import getpass, os, re
+    local admin_username admin_password
+
+    if [[ ! -f "$INSTALL_DIR/local.env" ]]; then
+        printf "\nUsuário administrador do portal [admin]: "
+        read -r admin_username </dev/tty
+        admin_username="${admin_username:-admin}"
+        if ! [[ "$admin_username" =~ ^[A-Za-z0-9_.-]{3,64}$ ]] || [[ "${admin_username,,}" == scheduler ]]; then
+            fail "Usuário administrador do portal inválido."
+        fi
+        prompt_password "Senha do administrador do portal: "
+        admin_password="$REPLY"
+    fi
+
+    runuser -u "$SERVICE_USER" -- env \
+        INSTALL_DIR="$INSTALL_DIR" \
+        ADMIN_USERNAME_INPUT="${admin_username:-}" \
+        ADMIN_PASSWORD_INPUT="${admin_password:-}" \
+        "$PYTHON_BIN" <<'PY'
+import os, re
 from pathlib import Path
 base = Path(os.environ['INSTALL_DIR']); target = base / 'local.env'
 if target.is_symlink(): raise SystemExit('ERRO: local.env não pode ser link simbólico')
 if target.exists():
     print('✓ local.env já existe — mantendo')
 else:
-    user = input('ADMIN_USERNAME [admin_local]: ').strip() or 'admin_local'
-    if not re.fullmatch(r'[A-Za-z0-9_.-]{3,64}', user) or user.lower() == 'scheduler': raise SystemExit('ERRO: ADMIN_USERNAME inválido')
-    password = getpass.getpass('ADMIN_PASSWORD: '); confirmation = getpass.getpass('Confirme ADMIN_PASSWORD: ')
-    if password != confirmation or len(password) < 16: raise SystemExit('ERRO: senhas devem coincidir e ter pelo menos 16 caracteres')
+    user = os.environ['ADMIN_USERNAME_INPUT']
+    password = os.environ['ADMIN_PASSWORD_INPUT']
     text = (base / 'local.env.example').read_text(encoding='utf-8')
     for key, value in {'ADMIN_USERNAME': user, 'ADMIN_PASSWORD': password}.items():
         quoted = '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
@@ -442,7 +532,7 @@ PY
 
 create_db_root_cnf() {
     local password escaped_password
-    printf 'Senha root do MariaDB (Enter para unix_socket): '; read -r -s password; printf '\n'
+    printf 'Senha root do MariaDB (Enter para unix_socket): '; read -r -s password </dev/tty; printf '\n'
     DB_ROOT_CNF="$(mktemp /run/arcreports-db-root.XXXXXX.cnf)"; chmod 600 "$DB_ROOT_CNF"
     escaped_password="${password//\\/\\\\}"; escaped_password="${escaped_password//\"/\\\"}"
     { printf '[client]\nuser=root\nprotocol=socket\n'; [[ -z "$password" ]] || printf 'password="%s"\n' "$escaped_password"; } > "$DB_ROOT_CNF"
@@ -464,7 +554,7 @@ from dotenv import dotenv_values
 values = dotenv_values(Path(os.environ['INSTALL_DIR']) / '.env', interpolate=False)
 for key in ('LOCAL_DB_PASS', 'LOCAL_DB_ADMIN_PASS', 'LOCAL_DB_USER_ADMIN_PASS'):
     value = str(values.get(key) or '')
-    if len(value) < 16 or any(c in value for c in '\n\r\0'): raise SystemExit('ERRO: credencial inválida em .env: ' + key)
+    if len(value) < 8 or any(c in value for c in '\n\r\0'): raise SystemExit('ERRO: credencial inválida em .env: ' + key)
     print(base64.b64encode(value.encode()).decode())
 PY
     local -a db_values; mapfile -t db_values < "$DB_VALUES_FILE"; rm -f -- "$DB_VALUES_FILE"; DB_VALUES_FILE=""
@@ -507,7 +597,7 @@ setup_nginx() {
     elif [[ "$INSTALL_MODE" == update ]]; then
         warn "Nginx já configurado — mantendo $target"
     else
-        printf 'Configuração Nginx existente. Sobrescrever após backup? [s/N] '; read -r answer
+        printf 'Configuração Nginx existente. Sobrescrever após backup? [s/N] '; read -r answer </dev/tty
         [[ "${answer,,}" == s ]] && replace=1 || warn "Nginx já configurado — mantendo"
     fi
     if (( replace )); then

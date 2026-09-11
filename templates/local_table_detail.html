@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ table_name }}</h1>
+    <p>Visualizacao limitada aos primeiros registros da tabela local.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/admin/local-tables">Voltar</a>
+</div>
+
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<section class="panel">
+  <div class="panel-header">
+    <h2>Dados</h2>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-success" href="/admin/local-tables/{{ table_name }}/export">Exportar Excel</a>
+      <a class="btn btn-sm btn-outline-dark" href="/admin/local-tables/{{ table_name }}/history">Historico</a>
+    </div>
+  </div>
+  {% if report %}
+    <div class="result-meta">Relatorio vinculado: <a href="/reports/{{ report.id }}">{{ report.name }}</a></div>
+  {% else %}
+    <div class="result-meta">Tabela orfa, sem relatorio vinculado.</div>
+  {% endif %}
+
+  {% if rows %}
+  <div class="table-responsive result-table">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>{% for column in columns %}<th>{{ column }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>{% for column in columns %}<td>{{ row[column] }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state">Tabela sem dados para visualizar.</div>
+  {% endif %}
+</section>
+{% endblock %}

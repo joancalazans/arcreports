@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Historico administrativo</h1>
+    <p>Acoes registradas para <code>{{ table_name }}</code>.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/admin/local-tables">Voltar</a>
+</div>
+
+<section class="panel">
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Usuario</th>
+          <th>Acao</th>
+          <th>Status</th>
+          <th>Mensagem</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.created_at|portal_dt('%d/%m/%Y %H:%M') }}</td>
+          <td>{{ log.username or '-' }}</td>
+          <td>{{ log.action }}</td>
+          <td><span class="badge text-bg-{{ 'success' if log.status == 'success' else 'danger' if log.status == 'error' else 'warning' if log.status == 'blocked' else 'secondary' }}">{{ log.status }}</span></td>
+          <td>{{ log.message or '-' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty-state">Nenhuma acao registrada para esta tabela.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

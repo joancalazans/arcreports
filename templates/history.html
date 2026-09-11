@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .audit-filter-control {
+    height: 32px;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    background: var(--color-background-primary);
+    color: var(--color-text-primary);
+    font-size: 11px;
+    padding: 0 8px;
+    min-width: 0;
+  }
+  .audit-filter-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--color-text-tertiary);
+  }
+  .audit-button {
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--border-radius-md);
+    font-size: 11px;
+    text-decoration: none;
+    padding: 0 12px;
+    white-space: nowrap;
+  }
+  .audit-button-primary {
+    border: 0.5px solid #8fb8df;
+    background: #e6f1fb;
+    color: #185fa5;
+  }
+  .audit-button-ghost {
+    border: 0.5px solid var(--color-border-tertiary);
+    background: transparent;
+    color: var(--color-text-secondary);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 0.5px solid var(--color-border-tertiary);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    text-decoration: none;
+    background: var(--color-background-primary);
+  }
+  .chip-active {
+    background: #e6f1fb;
+    border-color: #8fb8df;
+    color: #185fa5;
+  }
+  .audit-th {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 12px;
+    white-space: nowrap;
+  }
+  .audit-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+  .cat-execucao { background: #E6F1FB; color: #185FA5; }
+  .cat-relatorio { background: #EAF3DE; color: #3B6D11; }
+  .cat-dashboard { background: #EEEDFE; color: #3C3489; }
+  .cat-sistema { background: #FAEEDA; color: #854F0B; }
+  .cat-tabela { background: #F1EFE8; color: #444441; }
+  .cat-autenticacao { background: #FCEBEB; color: #A32D2D; }
+  .status-success { background: #EAF3DE; color: #3B6D11; }
+  .status-error { background: #FCEBEB; color: #A32D2D; }
+  .status-info { background: #E6F1FB; color: #185FA5; }
+  .status-modal-open { background: #EEEDFE; color: #3C3489; }
+  .status-default { background: #F1EFE8; color: #444441; }
+  @media (max-width: 1100px) {
+    .audit-filter-grid {
+      grid-template-columns: 1fr 1fr 1fr !important;
+    }
+  }
+  @media (max-width: 700px) {
+    .audit-filter-grid {
+      grid-template-columns: 1fr !important;
+    }
+    .audit-header {
+      align-items: flex-start !important;
+      flex-direction: column;
+      gap: 8px;
+    }
+  }
+</style>
+
+<div class="page-header audit-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+  <div>
+    <h1>Logs de Auditoria</h1>
+    <p>Registro unificado de execuções e ações administrativas.</p>
+  </div>
+  <div style="font-size:11px;color:var(--color-text-tertiary);text-align:right">
+    Retenção: 90 dias
+    <br>
+    <span style="color:var(--color-text-tertiary)">
+      Próxima limpeza: {{ next_cleanup }}
+    </span>
+  </div>
+</div>
+
+<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem">
+  <form method="get" class="audit-filter-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto auto auto;gap:8px;align-items:end">
+    <label class="audit-filter-label">
+      Período de
+      <input class="audit-filter-control" type="date" name="date_from" value="{{ filtros.date_from }}">
+    </label>
+    <label class="audit-filter-label">
+      Até
+      <input class="audit-filter-control" type="date" name="date_to" value="{{ filtros.date_to }}">
+    </label>
+    <label class="audit-filter-label">
+      Categoria
+      <select class="audit-filter-control" name="categoria">
+        <option value="">Todas</option>
+        {% for cat in ['Execução','Exclusão','Relatório','Dashboard','Sistema','Tabela','Autenticação'] %}
+        <option value="{{ cat }}" {% if filtros.categoria == cat %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="audit-filter-label">
+      Usuário
+      <select class="audit-filter-control" name="usuario">
+        <option value="">Todos</option>
+        {% for u in usuarios %}
+        <option value="{{ u }}" {% if filtros.usuario == u %}selected{% endif %}>{{ u }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="audit-filter-label">
+      Status
+      <select class="audit-filter-control" name="status">
+        <option value="">Todos</option>
+        {% for st in ['success','error','info','modal_open'] %}
+        <option value="{{ st }}" {% if filtros.status == st %}selected{% endif %}>{{ st|replace('_', ' ')|title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="audit-button audit-button-primary">Filtrar</button>
+    <a href="/admin/audit-log/export?{{ current_query_string }}" class="audit-button audit-button-ghost" style="text-decoration:none">
+      <i class="ti ti-download"></i>&nbsp; Exportar CSV
+    </a>
+    <a href="{{ clear_filters_url }}" class="audit-button audit-button-ghost">Limpar</a>
+  </form>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+  <a href="?categoria=" class="chip {% if not filtros.categoria %}chip-active{% endif %}">Todos ({{ total }})</a>
+  {% for cat in ['Execução','Exclusão','Relatório','Dashboard','Sistema','Tabela','Autenticação'] %}
+  <a href="?categoria={{ cat|urlencode }}" class="chip {% if filtros.categoria == cat %}chip-active{% endif %}">{{ cat }}</a>
+  {% endfor %}
+</div>
+
+<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden">
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)">
+          <th class="audit-th">Data/Hora</th>
+          <th class="audit-th">Categoria</th>
+          <th class="audit-th">Usuário</th>
+          <th class="audit-th">Ação</th>
+          <th class="audit-th">Detalhe</th>
+          <th class="audit-th">Status</th>
+          <th class="audit-th">Duração</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        {% set cat_class = {
+          'Execução': 'cat-execucao',
+          'Relatório': 'cat-relatorio',
+          'Dashboard': 'cat-dashboard',
+          'Sistema': 'cat-sistema',
+          'Tabela': 'cat-tabela',
+          'Autenticação': 'cat-autenticacao'
+        }.get(log.categoria, 'cat-sistema') %}
+        {% set status_class = {
+          'success': 'status-success',
+          'error': 'status-error',
+          'info': 'status-info',
+          'modal_open': 'status-modal-open'
+        }.get(log.status, 'status-default') %}
+        <tr style="border-bottom:0.5px solid var(--color-border-tertiary)">
+          <td style="font-size:11px;white-space:nowrap;padding:8px 12px">{{ log.timestamp | portal_dt('%d/%m/%Y %H:%M:%S') }}</td>
+          <td style="padding:8px 12px"><span class="audit-badge {{ cat_class }}">{{ log.categoria }}</span></td>
+          <td style="font-size:11px;padding:8px 12px">{{ log.usuario }}</td>
+          <td style="font-size:11px;padding:8px 12px">{{ log.acao }}</td>
+          <td style="font-size:11px;padding:8px 12px;color:var(--color-text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ log.detalhe }}">{{ log.detalhe }}</td>
+          <td style="padding:8px 12px"><span class="audit-badge {{ status_class }}">{{ log.status }}</span></td>
+          <td style="font-size:11px;padding:8px 12px;color:var(--color-text-tertiary)">{{ log.duracao }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" style="padding:24px;text-align:center;color:var(--color-text-tertiary);font-size:12px">
+            Nenhum log encontrado para os filtros selecionados.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-top:0.5px solid var(--color-border-tertiary);gap:12px;flex-wrap:wrap">
+    <div style="font-size:11px;color:var(--color-text-tertiary)">
+      {% if total %}
+      Exibindo {{ (page - 1) * per_page + 1 }}-{{ [page * per_page, total]|min }} de {{ total }} registros
+      {% else %}
+      Exibindo 0 de 0 registros
+      {% endif %}
+    </div>
+
+    <div style="display:flex;gap:4px;align-items:center">
+      {% if page > 1 %}
+      <a href="{{ prev_page_url }}" class="audit-button audit-button-ghost">← Anterior</a>
+      {% endif %}
+
+      <span style="font-size:11px;padding:5px 10px;color:var(--color-text-secondary)">
+        Página {{ page }} de {{ total_pages }}
+      </span>
+
+      {% if page < total_pages %}
+      <a href="{{ next_page_url }}" class="audit-button audit-button-ghost">Próximo →</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

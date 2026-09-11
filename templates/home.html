@@ -1,0 +1,739 @@
+{% extends "base.html" %}
+{% block head %}
+<style>
+  .home-dashboard-report-card {
+    transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  }
+  .home-dashboard-report-card:hover {
+    background: var(--color-background-secondary);
+    border-color: var(--color-border-secondary) !important;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+  }
+  .home-dashboard-report-card:hover .report-card-summary {
+    background: var(--color-background-secondary);
+  }
+  .home-card-header {
+    cursor: pointer;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header dashboard-header">
+  <div>
+    <h1 style="font-size:18px;font-weight:500">Home</h1>
+    <p style="font-size:13px;color:var(--color-text-tertiary)">Operacao dos relatorios destacados e da importacao GLPI.</p>
+  </div>
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<section style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:1.5rem">
+  <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem">
+    <div style="display:block;font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Relatorios cadastrados</div>
+    <div style="font-size:24px;font-weight:500;color:var(--color-text-primary)">{{ total_reports }}</div>
+  </div>
+  <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem">
+    <div style="display:block;font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Relatorios ativos</div>
+    <div style="font-size:24px;font-weight:500;color:var(--color-text-primary)">{{ active_reports }}</div>
+  </div>
+  <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem">
+    <div style="display:block;font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Ultima importacao GLPI</div>
+    <div style="font-size:24px;font-weight:500;color:var(--color-text-primary)">{{ last_import.started_at|portal_dt('%d/%m %H:%M') if last_import else 'Nunca' }}</div>
+  </div>
+  {% if reports_with_error > 0 %}
+  <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-left:3px solid #E24B4A;border-radius:0 var(--border-radius-lg) var(--border-radius-lg) 0;padding:1rem 1.25rem">
+  {% else %}
+  <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-left:3px solid #1D9E75;border-radius:0 var(--border-radius-lg) var(--border-radius-lg) 0;padding:1rem 1.25rem">
+  {% endif %}
+    <div style="display:block;font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Relatorios com erro</div>
+    <div style="font-size:24px;font-weight:500;color:var(--color-text-primary)">{{ reports_with_error }}</div>
+  </div>
+  <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem">
+    <div style="display:block;font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Registros importados</div>
+    <div style="font-size:24px;font-weight:500;color:var(--color-text-primary)">{{ total_imported_rows }}</div>
+  </div>
+</section>
+
+<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 16px;margin-bottom:1rem">
+  <label class="form-label" for="home-search" style="font-size:10px;text-transform:uppercase;letter-spacing:0.04em;color:var(--color-text-tertiary)">Busca por relatório</label>
+  <div style="position:relative">
+    <i class="ti ti-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+    <input type="text" id="home-search" class="form-control" placeholder="Buscar relatório..." autocomplete="off" style="height:32px;font-size:12px;padding-left:32px">
+  </div>
+</div>
+
+<section class="dashboard-section">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+    <div>
+      <h2 style="font-size:16px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px">Relatórios em Destaque</h2>
+      <p style="font-size:12px;color:var(--color-text-tertiary)">Detalhes consultam apenas tabelas locais destino.</p>
+    </div>
+    <div id="home-results-count" data-default-text="{{ grouped_featured_total }} relatórios · {{ grouped_featured | length }} categorias" style="font-size:11px;color:var(--color-text-tertiary)">
+      {{ grouped_featured_total }} relatórios · {{ grouped_featured | length }} categorias
+    </div>
+  </div>
+
+  <div class="dashboard-reports" id="dashboardReports">
+    {% for cat_name, cat_items in grouped_featured.items() %}
+    {% set group_index = loop.index %}
+    <div id="home-group-{{ group_index }}" style="margin-bottom:8px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden">
+      <div onclick="toggleHomeGroup({{ group_index }})" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--color-background-secondary);cursor:pointer;user-select:none">
+        <i id="home-icon-{{ group_index }}" class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary);transition:transform 0.2s" aria-hidden="true"></i>
+        <span style="font-size:13px;font-weight:500;color:var(--color-text-primary)">{{ cat_name }}</span>
+        <span style="font-size:10px;padding:1px 7px;border-radius:8px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">
+          {{ cat_items | length }} relatórios
+        </span>
+      </div>
+
+      <div id="home-content-{{ group_index }}" style="display:block">
+        <div id="cards-grid-{{ group_index }}" style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+        {% for item in cat_items %}
+        {% set report = item.report %}
+        {% set last_exec = item.last_exec %}
+        <div class="home-card-header home-dashboard-report-card" data-report-detail="{{ report.id }}" data-group="{{ group_index }}" data-report-id="{{ report.id }}" data-report-name="{{ report.name }}" data-category="{{ cat_name }}" id="card-{{ report.id }}" style="padding:12px 14px;border-bottom:0.5px solid var(--color-border-tertiary);border-right:{% if loop.index is odd %}0.5px solid var(--color-border-tertiary){% else %}none{% endif %};background:var(--color-background-primary)">
+          <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
+            <div style="width:30px;height:30px;border-radius:7px;background:#E6F1FB;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#185FA5;flex-shrink:0">
+              {{ report.name[:2].upper() }}
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                {{ report.name }}
+              </div>
+            <div style="margin-top:3px">
+              <span style="display:inline-flex;align-items:center;max-width:100%;font-size:9px;color:var(--color-text-secondary);background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:999px;padding:1px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                {{ cat_name }}{% if report.is_primary %} · Primário{% endif %}
+              </span>
+            </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            {% if last_exec %}
+            <div>
+              <div style="font-size:9px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.03em">Última execução</div>
+              <div style="font-size:11px;font-weight:500;color:var(--color-text-primary)">
+                {{ last_exec.executed_at | portal_dt('%d/%m %H:%M') }}
+              </div>
+            </div>
+            <div>
+              <div style="font-size:9px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.03em">Status</div>
+              <span style="font-size:9px;padding:1px 6px;border-radius:4px;{% if last_exec.status == 'success' %}background:#EAF3DE;color:#3B6D11{% else %}background:#FCEBEB;color:#A32D2D{% endif %}">
+                {{ last_exec.status }}
+              </span>
+            </div>
+            <div>
+              <div style="font-size:9px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.03em">Registros</div>
+              <div style="font-size:11px;font-weight:500;color:var(--color-text-primary)">
+                {{ last_exec.row_count if last_exec.row_count is not none else '—' }}
+              </div>
+            </div>
+            {% else %}
+            <div style="font-size:11px;color:var(--color-text-tertiary)">Nunca executado</div>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div style="padding:24px;text-align:center;color:var(--color-text-tertiary);font-size:13px">
+      Nenhum relatório marcado para exibição na Home.
+    </div>
+    {% endfor %}
+  </div>
+  <div id="home-no-results" style="display:none;padding:24px;text-align:center;color:var(--color-text-tertiary);font-size:13px">
+    Nenhum relatório encontrado para "<span id="home-search-term"></span>".
+  </div>
+</section>
+
+<div class="modal fade" id="reportDetailModal" tabindex="-1" aria-labelledby="reportDetailTitle" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content report-detail-modal">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title fs-5" id="reportDetailTitle">Relatorio completo</h2>
+          <p class="report-detail-description" id="reportDetailDescription"></p>
+          <div id="reportDetailUpdated" title="" style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px"></div>
+        </div>
+        <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="report-detail-meta">
+          <div>
+            <span>Tabela destino</span>
+            <code id="reportDetailTable">-</code>
+          </div>
+          <div>
+            <span>Registros encontrados</span>
+            <strong id="reportDetailTotal">-</strong>
+          </div>
+          <div>
+            <span>Periodo disponivel</span>
+            <strong id="reportDetailRange">-</strong>
+          </div>
+        </div>
+
+        <form class="report-detail-filters" id="reportDetailFilters">
+          <label id="reportDetailDateColumnWrap" class="d-none">
+            <span>Filtrar por</span>
+            <select class="form-select" id="reportDetailDateColumn" name="campo_data"></select>
+          </label>
+          <label id="reportDetailDateFromWrap">
+            <span>Data inicio</span>
+            <input class="form-control" id="reportDetailDateFrom" name="date_from" type="date">
+          </label>
+          <label id="reportDetailDateToWrap">
+            <span>Data fim</span>
+            <input class="form-control" id="reportDetailDateTo" name="date_to" type="date">
+          </label>
+          <button class="btn btn-primary" id="reportDetailApplyFilter" type="submit">Aplicar filtro</button>
+          <button class="btn d-none" id="reportDetailClearFilter" type="button" style="background-color:#FAEEDA;border-color:#E8C66A;color:#6B4F00">Limpar filtro</button>
+          <a class="btn btn-outline-success" id="reportDetailExport" href="#">Exportar Excel</a>
+        </form>
+
+        <div style="position:relative;margin-bottom:10px;max-width:360px">
+          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--color-text-tertiary)">🔍</span>
+          <input class="form-control" id="reportDetailSearch" type="search" placeholder="Buscar em todos os registros..." autocomplete="off" style="height:32px;font-size:12px;padding-left:32px;padding-right:58px">
+          <span id="reportDetailSearchSpinner" class="d-none" style="position:absolute;right:34px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--color-text-tertiary)">...</span>
+          <button id="reportDetailSearchClear" class="btn btn-link d-none" type="button" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:14px;text-decoration:none;color:var(--color-text-tertiary);padding:0 6px">×</button>
+        </div>
+
+        <div class="alert alert-warning report-detail-warning d-none" id="reportDetailWarning"></div>
+        <div class="alert alert-danger report-detail-error d-none" id="reportDetailError"></div>
+        <div class="report-detail-loading" id="reportDetailLoading">Carregando resultado local...</div>
+
+        <div class="table-responsive report-detail-table-wrap">
+          <table class="table table-sm table-hover align-middle report-detail-table">
+            <thead id="reportDetailHead"></thead>
+            <tbody id="reportDetailRows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer report-detail-footer">
+        <span id="reportDetailPageLabel">Pagina -</span>
+        <div class="btn-group" role="group" aria-label="Paginacao do relatorio">
+          <button class="btn btn-outline-secondary" id="reportDetailPrevious" type="button">Anterior</button>
+          <button class="btn btn-outline-secondary" id="reportDetailNext" type="button">Proxima</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', path='vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js') }}"></script>
+<script>
+  function toggleHomeGroup(index) {
+    var content = document.getElementById("home-content-" + index);
+    var icon = document.getElementById("home-icon-" + index);
+    var isOpen = content.style.display !== "none";
+    content.style.display = isOpen ? "none" : "block";
+    icon.style.transform = isOpen ? "rotate(-90deg)" : "rotate(0deg)";
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    var groups = document.querySelectorAll('[id^="home-content-"]');
+    groups.forEach(function(group, index) {
+      if (index > 0 && groups.length > 2) {
+        group.style.display = "none";
+        var icon = document.getElementById("home-icon-" + (index + 1));
+        if (icon) {
+          icon.style.transform = "rotate(-90deg)";
+        }
+      }
+    });
+  });
+
+  const normalizeHomeSearch = (str) => {
+    return String(str || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  };
+
+  const homeSearchInput = document.getElementById("home-search");
+  const homeResultsCount = document.getElementById("home-results-count");
+  const homeNoResults = document.getElementById("home-no-results");
+  const homeSearchTerm = document.getElementById("home-search-term");
+  const homeGroupStateBeforeSearch = new Map();
+  let homeSearchWasActive = false;
+
+  const homeGroupElements = () => Array.from(document.querySelectorAll('[id^="home-group-"]'));
+  const homeGroupIndex = (group) => group.id.replace("home-group-", "");
+  const homeGroupContent = (group) => document.getElementById("home-content-" + homeGroupIndex(group));
+  const homeGroupIcon = (group) => document.getElementById("home-icon-" + homeGroupIndex(group));
+
+  const setHomeGroupOpen = (group, isOpen) => {
+    const content = homeGroupContent(group);
+    const icon = homeGroupIcon(group);
+    if (content) content.style.display = isOpen ? "block" : "none";
+    if (icon) icon.style.transform = isOpen ? "rotate(0deg)" : "rotate(-90deg)";
+  };
+
+  const rememberHomeGroupState = () => {
+    homeGroupStateBeforeSearch.clear();
+    homeGroupElements().forEach((group) => {
+      const content = homeGroupContent(group);
+      homeGroupStateBeforeSearch.set(group.id, !content || content.style.display !== "none");
+    });
+  };
+
+  const restoreHomeGroupState = () => {
+    homeGroupElements().forEach((group) => {
+      group.style.display = "";
+      setHomeGroupOpen(group, homeGroupStateBeforeSearch.get(group.id) !== false);
+    });
+  };
+
+  const updateHomeSearchResults = () => {
+    const rawTerm = homeSearchInput ? homeSearchInput.value.trim() : "";
+    const term = normalizeHomeSearch(rawTerm);
+    const isSearching = Boolean(term);
+    let visibleCards = 0;
+
+    if (isSearching && !homeSearchWasActive) {
+      rememberHomeGroupState();
+    }
+
+    document.querySelectorAll(".home-dashboard-report-card").forEach((card) => {
+      const haystack = normalizeHomeSearch(`${card.dataset.reportName || ""} ${card.dataset.category || ""}`);
+      const matches = !isSearching || haystack.includes(term);
+      card.style.display = matches ? "" : "none";
+      if (matches) visibleCards += 1;
+    });
+
+    homeGroupElements().forEach((group) => {
+      const cards = Array.from(group.querySelectorAll(".home-dashboard-report-card"));
+      const groupHasVisibleCards = cards.some((card) => card.style.display !== "none");
+      group.style.display = groupHasVisibleCards ? "" : "none";
+      if (groupHasVisibleCards) {
+        if (isSearching) setHomeGroupOpen(group, true);
+      }
+    });
+
+    if (!isSearching) {
+      if (homeSearchWasActive) restoreHomeGroupState();
+      if (homeResultsCount) homeResultsCount.textContent = homeResultsCount.dataset.defaultText || "";
+      if (homeNoResults) homeNoResults.style.display = "none";
+      homeSearchWasActive = false;
+      return;
+    }
+
+    if (homeResultsCount) {
+      homeResultsCount.textContent = visibleCards > 0 ? `${visibleCards} relatórios encontrados` : "Nenhum relatório encontrado";
+    }
+    if (homeNoResults) homeNoResults.style.display = visibleCards > 0 ? "none" : "block";
+    if (homeSearchTerm) homeSearchTerm.textContent = rawTerm;
+    homeSearchWasActive = true;
+  };
+
+  homeSearchInput?.addEventListener("input", updateHomeSearchResults);
+
+  const reportDetailModalElement = document.getElementById("reportDetailModal");
+  const reportDetailModal = new bootstrap.Modal(reportDetailModalElement);
+  const reportDetailState = {
+    reportId: null,
+    page: 1,
+    pageSize: 100,
+    totalPages: 1,
+    tempTable: null,
+    sortCol: null,
+    sortDir: null,
+    dateColumns: [],
+    search: "",
+    searchTimer: null,
+  };
+  const reportDetailDateFrom = document.getElementById("reportDetailDateFrom");
+  const reportDetailDateTo = document.getElementById("reportDetailDateTo");
+  const reportDetailDateColumn = document.getElementById("reportDetailDateColumn");
+  const reportDetailDateColumnWrap = document.getElementById("reportDetailDateColumnWrap");
+  const reportDetailDateFromWrap = document.getElementById("reportDetailDateFromWrap");
+  const reportDetailDateToWrap = document.getElementById("reportDetailDateToWrap");
+  const reportDetailApplyFilter = document.getElementById("reportDetailApplyFilter");
+  const reportDetailClearFilter = document.getElementById("reportDetailClearFilter");
+  const reportDetailExport = document.getElementById("reportDetailExport");
+  const reportDetailSearch = document.getElementById("reportDetailSearch");
+  const reportDetailSearchSpinner = document.getElementById("reportDetailSearchSpinner");
+  const reportDetailSearchClear = document.getElementById("reportDetailSearchClear");
+  const reportDetailLoading = document.getElementById("reportDetailLoading");
+  const reportDetailError = document.getElementById("reportDetailError");
+  const reportDetailWarning = document.getElementById("reportDetailWarning");
+  const reportDetailHead = document.getElementById("reportDetailHead");
+  const reportDetailRows = document.getElementById("reportDetailRows");
+  const reportDetailPrevious = document.getElementById("reportDetailPrevious");
+  const reportDetailNext = document.getElementById("reportDetailNext");
+
+  const formatDateInput = (value) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const resetReportDetailDates = () => {
+    const today = new Date();
+    reportDetailDateFrom.value = `${today.getFullYear()}-01-01`;
+    reportDetailDateTo.value = formatDateInput(today);
+  };
+
+  const syncReportClearFilterVisibility = () => {
+    reportDetailClearFilter.classList.toggle("d-none", !reportDetailState.tempTable);
+  };
+
+  const reportDetailParams = () => {
+    const params = new URLSearchParams({
+      page: reportDetailState.page,
+      page_size: reportDetailState.pageSize,
+    });
+    if (reportDetailState.tempTable) params.set("temp_table", reportDetailState.tempTable);
+    if (reportDetailDateColumn.value) params.set("campo_data", reportDetailDateColumn.value);
+    if (reportDetailDateFrom.value) params.set("date_from", reportDetailDateFrom.value);
+    if (reportDetailDateTo.value) params.set("date_to", reportDetailDateTo.value);
+    if (reportDetailState.sortCol && reportDetailState.sortDir) {
+      params.set("sort_col", reportDetailState.sortCol);
+      params.set("sort_dir", reportDetailState.sortDir);
+    }
+    if (reportDetailState.search) params.set("search", reportDetailState.search);
+    return params;
+  };
+
+  const setReportDetailError = (message) => {
+    reportDetailError.textContent = message || "";
+    reportDetailError.classList.toggle("d-none", !message);
+  };
+
+  const setReportDetailWarning = (message) => {
+    reportDetailWarning.textContent = message || "";
+    reportDetailWarning.classList.toggle("d-none", !message);
+  };
+
+  const renderReportDateColumns = (dateColumns) => {
+    reportDetailState.dateColumns = Array.isArray(dateColumns) ? dateColumns : [];
+    reportDetailDateColumn.replaceChildren();
+    const hasDateFilter = reportDetailState.dateColumns.length > 0;
+    reportDetailDateColumnWrap.classList.toggle("d-none", reportDetailState.dateColumns.length <= 1);
+    reportDetailDateFromWrap.classList.toggle("d-none", !hasDateFilter);
+    reportDetailDateToWrap.classList.toggle("d-none", !hasDateFilter);
+    reportDetailApplyFilter.classList.toggle("d-none", !hasDateFilter);
+    reportDetailDateFrom.disabled = !hasDateFilter;
+    reportDetailDateTo.disabled = !hasDateFilter;
+    reportDetailDateColumn.disabled = !hasDateFilter;
+    reportDetailState.dateColumns.forEach((column) => {
+      const option = document.createElement("option");
+      option.value = column.name;
+      option.textContent = column.label || column.name;
+      reportDetailDateColumn.append(option);
+    });
+  };
+
+  const nextReportSort = (column) => {
+    if (reportDetailState.sortCol !== column) return { col: column, dir: "asc" };
+    if (reportDetailState.sortDir === "asc") return { col: column, dir: "desc" };
+    if (reportDetailState.sortDir === "desc") return { col: null, dir: null };
+    return { col: column, dir: "asc" };
+  };
+
+  const renderReportCount = (detail) => {
+    const count = detail.count_meta || { total: detail.total_count, period: detail.is_temporary ? detail.total_count : null };
+    if (count.period !== null && count.period !== undefined) {
+      document.getElementById("reportDetailTotal").textContent =
+        `${Number(count.period).toLocaleString("pt-BR")} registros no período / ${Number(count.total || 0).toLocaleString("pt-BR")} no total`;
+    } else {
+      document.getElementById("reportDetailTotal").textContent =
+        `${Number(count.total || detail.total_count || 0).toLocaleString("pt-BR")} registros no total`;
+    }
+  };
+
+  const renderReportUpdateInfo = (updateInfo) => {
+    const target = document.getElementById("reportDetailUpdated");
+    if (!updateInfo) {
+      target.textContent = "";
+      target.title = "";
+      return;
+    }
+    target.textContent = (updateInfo.level === "red" ? "⚠ " : "") + updateInfo.label;
+    target.title = updateInfo.exact || "";
+    target.style.color = updateInfo.level === "red"
+      ? "#B42318"
+      : updateInfo.level === "amber"
+        ? "#B54708"
+        : "var(--color-text-tertiary)";
+  };
+
+  const renderReportDetailTable = (columns, rows, emptyMessage) => {
+    reportDetailHead.replaceChildren();
+    reportDetailRows.replaceChildren();
+
+    const headerRow = document.createElement("tr");
+    columns.forEach((column) => {
+      const cell = document.createElement("th");
+      cell.scope = "col";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-link p-0 text-decoration-none";
+      button.style.fontSize = "inherit";
+      button.style.color = "inherit";
+      const indicator = reportDetailState.sortCol === column
+        ? (reportDetailState.sortDir === "asc" ? " ▲" : " ▼")
+        : "";
+      button.textContent = column + indicator;
+      button.addEventListener("click", () => {
+        const next = nextReportSort(column);
+        reportDetailState.sortCol = next.col;
+        reportDetailState.sortDir = next.dir;
+        loadReportDetail();
+      });
+      cell.append(button);
+      headerRow.append(cell);
+    });
+    reportDetailHead.append(headerRow);
+
+    if (!rows.length) {
+      const emptyRow = document.createElement("tr");
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = Math.max(columns.length, 1);
+      emptyCell.className = "empty-state";
+      emptyCell.textContent = emptyMessage || "Nenhum registro encontrado para o filtro.";
+      emptyRow.append(emptyCell);
+      reportDetailRows.append(emptyRow);
+      return;
+    }
+
+    rows.forEach((row) => {
+      const tableRow = document.createElement("tr");
+      columns.forEach((column) => {
+        const cell = document.createElement("td");
+        const value = row[column];
+        cell.textContent = value === null || value === undefined ? "" : value;
+        tableRow.append(cell);
+      });
+      reportDetailRows.append(tableRow);
+    });
+  };
+
+  const renderReportDetailMeta = (detail) => {
+    document.getElementById("reportDetailTitle").textContent = detail.report.name;
+    document.getElementById("reportDetailDescription").textContent = detail.report.description || "Sem descricao.";
+    document.getElementById("reportDetailTable").textContent = detail.report.destination_table || "-";
+    renderReportCount(detail);
+    renderReportUpdateInfo(detail.update_info);
+    const range = detail.date_range_available;
+    document.getElementById("reportDetailRange").textContent = range
+      ? `${range.date_from || "-"} a ${range.date_to || "-"} (${range.column})`
+      : "Sem periodo detectado";
+    if (!detail.is_temporary) {
+      renderReportDateColumns(detail.date_columns || []);
+      if (
+        detail.default_column
+        && reportDetailState.dateColumns.some((column) => column.name === detail.default_column)
+      ) {
+        reportDetailDateColumn.value = detail.default_column;
+      }
+    }
+    const dateFilterUnavailable = !detail.is_temporary && reportDetailState.dateColumns.length === 0;
+    const warning = dateFilterUnavailable
+      ? "Filtro de período não disponível para este relatório."
+      : detail.warning;
+    document.getElementById("reportDetailPageLabel").textContent =
+      `Pagina ${detail.page} de ${detail.total_pages} | ${detail.page_size} por pagina`;
+    reportDetailState.page = detail.page;
+    reportDetailState.totalPages = detail.total_pages;
+    reportDetailPrevious.disabled = detail.page <= 1;
+    reportDetailNext.disabled = detail.page >= detail.total_pages;
+    reportDetailExport.href =
+      `/dashboard/report-detail/${reportDetailState.reportId}/export?${new URLSearchParams({
+        date_from: reportDetailDateFrom.value,
+        date_to: reportDetailDateTo.value,
+        ...(reportDetailDateColumn.value ? { campo_data: reportDetailDateColumn.value } : {}),
+        ...(reportDetailState.sortCol && reportDetailState.sortDir ? { sort_col: reportDetailState.sortCol, sort_dir: reportDetailState.sortDir } : {}),
+        ...(reportDetailState.tempTable ? { temp_table: reportDetailState.tempTable } : {}),
+      })}`;
+    setReportDetailWarning(warning);
+  };
+
+  const loadReportDetail = () => {
+    if (!reportDetailState.reportId) return;
+    const isSearch = Boolean(reportDetailState.search);
+    reportDetailLoading.classList.remove("d-none");
+    reportDetailSearchSpinner.classList.toggle("d-none", !isSearch);
+    reportDetailExport.classList.add("disabled");
+    setReportDetailError("");
+    const endpoint = isSearch
+      ? `/dashboard/report-detail/${reportDetailState.reportId}/search`
+      : `/dashboard/report-detail/${reportDetailState.reportId}`;
+    fetch(`${endpoint}?${reportDetailParams()}`, {
+      credentials: "same-origin",
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Falha ao carregar o relatorio.");
+        return payload;
+      })
+      .then((detail) => {
+        renderReportDetailMeta(detail);
+        renderReportDetailTable(
+          detail.columns,
+          detail.rows,
+          isSearch ? `Nenhum registro encontrado para '${reportDetailState.search}'` : undefined,
+        );
+        reportDetailExport.classList.remove("disabled");
+      })
+      .catch((error) => {
+        renderReportDetailTable([], []);
+        setReportDetailWarning("");
+        setReportDetailError(error.message);
+      })
+      .finally(() => {
+        reportDetailLoading.classList.add("d-none");
+        reportDetailSearchSpinner.classList.add("d-none");
+      });
+  };
+
+  document.getElementById("dashboardReports").addEventListener("click", (event) => {
+    if (event.target.closest("button, a, form, input, select, textarea")) return;
+    const trigger = event.target.closest("[data-report-detail]");
+    if (!trigger) return;
+    reportDetailState.reportId = trigger.dataset.reportDetail;
+    reportDetailState.page = 1;
+    reportDetailState.tempTable = null;
+    reportDetailState.sortCol = null;
+    reportDetailState.sortDir = null;
+    reportDetailState.dateColumns = [];
+    reportDetailState.search = "";
+    reportDetailSearch.value = "";
+    reportDetailSearchClear.classList.add("d-none");
+    syncReportClearFilterVisibility();
+    renderReportDateColumns([]);
+    resetReportDetailDates();
+    reportDetailModal.show();
+    loadReportDetail();
+  });
+
+  document.getElementById("reportDetailFilters").addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!reportDetailState.reportId) return;
+    if (reportDetailState.dateColumns.length === 0) {
+      setReportDetailWarning("Filtro de período não disponível para este relatório.");
+      return;
+    }
+    reportDetailLoading.classList.remove("d-none");
+    reportDetailExport.classList.add("disabled");
+    setReportDetailError("");
+    fetch(`/dashboard/report-detail/${reportDetailState.reportId}/filter?${new URLSearchParams({
+      date_from: reportDetailDateFrom.value,
+      date_to: reportDetailDateTo.value,
+      ...(reportDetailDateColumn.value ? { campo_data: reportDetailDateColumn.value } : {}),
+    })}`, {
+      credentials: "same-origin",
+      method: "POST",
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Falha ao filtrar o relatorio.");
+        return payload;
+      })
+      .then((payload) => {
+        if (payload.no_filter_available) {
+          reportDetailState.tempTable = null;
+          syncReportClearFilterVisibility();
+          renderReportCount({ count_meta: payload.count_meta, total_count: 0, is_temporary: false });
+          setReportDetailWarning(payload.warning);
+          reportDetailExport.classList.remove("disabled");
+          return;
+        }
+        reportDetailState.tempTable = payload.temp_table;
+        syncReportClearFilterVisibility();
+        reportDetailState.page = 1;
+        renderReportCount({ count_meta: payload.count_meta, total_count: payload.row_count, is_temporary: true });
+        setReportDetailWarning(payload.warning);
+        loadReportDetail();
+      })
+      .catch((error) => {
+        setReportDetailError(error.message);
+        reportDetailExport.classList.remove("disabled");
+      })
+      .finally(() => {
+        reportDetailLoading.classList.add("d-none");
+      });
+  });
+
+  const clearReportFilter = () => {
+    reportDetailState.tempTable = null;
+    reportDetailState.page = 1;
+    reportDetailState.search = "";
+    clearTimeout(reportDetailState.searchTimer);
+    reportDetailSearch.value = "";
+    reportDetailSearchClear.classList.add("d-none");
+    reportDetailSearchSpinner.classList.add("d-none");
+    resetReportDetailDates();
+    setReportDetailWarning("");
+    syncReportClearFilterVisibility();
+    loadReportDetail();
+  };
+
+  reportDetailClearFilter.addEventListener("click", clearReportFilter);
+
+  reportDetailPrevious.addEventListener("click", () => {
+    if (reportDetailState.page <= 1) return;
+    reportDetailState.page -= 1;
+    loadReportDetail();
+  });
+
+  reportDetailNext.addEventListener("click", () => {
+    if (reportDetailState.page >= reportDetailState.totalPages) return;
+    reportDetailState.page += 1;
+    loadReportDetail();
+  });
+
+  reportDetailSearch.addEventListener("input", () => {
+    clearTimeout(reportDetailState.searchTimer);
+    reportDetailSearchClear.classList.toggle("d-none", !reportDetailSearch.value);
+    reportDetailSearchSpinner.classList.remove("d-none");
+    reportDetailState.searchTimer = setTimeout(() => {
+      reportDetailState.search = reportDetailSearch.value.trim();
+      reportDetailState.page = 1;
+      loadReportDetail();
+    }, 400);
+  });
+
+  reportDetailSearchClear.addEventListener("click", () => {
+    clearTimeout(reportDetailState.searchTimer);
+    reportDetailSearch.value = "";
+    reportDetailState.search = "";
+    reportDetailState.page = 1;
+    reportDetailSearchClear.classList.add("d-none");
+    reportDetailSearchSpinner.classList.add("d-none");
+    loadReportDetail();
+  });
+
+  reportDetailModalElement.addEventListener("hidden.bs.modal", () => {
+    reportDetailState.reportId = null;
+    reportDetailState.page = 1;
+    reportDetailState.totalPages = 1;
+    reportDetailState.tempTable = null;
+    syncReportClearFilterVisibility();
+    reportDetailState.sortCol = null;
+    reportDetailState.sortDir = null;
+    reportDetailState.dateColumns = [];
+    reportDetailState.search = "";
+    clearTimeout(reportDetailState.searchTimer);
+    reportDetailSearch.value = "";
+    reportDetailSearchClear.classList.add("d-none");
+    reportDetailSearchSpinner.classList.add("d-none");
+    document.getElementById("reportDetailTitle").textContent = "Relatorio completo";
+    document.getElementById("reportDetailDescription").textContent = "";
+    document.getElementById("reportDetailTable").textContent = "-";
+    document.getElementById("reportDetailTotal").textContent = "-";
+    document.getElementById("reportDetailRange").textContent = "-";
+    renderReportUpdateInfo(null);
+    document.getElementById("reportDetailPageLabel").textContent = "Pagina -";
+    reportDetailExport.href = "#";
+    renderReportDateColumns([]);
+    renderReportDetailTable([], []);
+    setReportDetailWarning("");
+    setReportDetailError("");
+  });
+
+</script>
+{% endblock %}

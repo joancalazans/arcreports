@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem">
+  <div>
+    <h1 style="font-size:18px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">Personalização do portal</h1>
+    <p style="font-size:13px;color:var(--color-text-tertiary)">Ajuste tipografia e tela de login. O preview atualiza em tempo real.</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="/admin/appearance" style="font-size:12px;padding:6px 12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);text-decoration:none">Restaurar padrão</a>
+    <button type="submit" form="form-appearance" style="font-size:12px;padding:6px 16px;background:#378ADD;color:#fff;border:none;border-radius:6px;cursor:pointer">Salvar configurações</button>
+  </div>
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div style="display:grid;grid-template-columns:minmax(0, 60%) minmax(320px, 40%);gap:20px;align-items:start">
+  <div>
+  <form id="form-appearance" method="post" action="/admin/appearance" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="current_login_bg_image" value="{{ appearance.login_bg_image }}">
+
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem">
+      <div style="font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:6px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:12px">
+        Identidade do portal
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;margin-bottom:10px">
+        <div>
+          <label style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">
+            Nome do portal
+          </label>
+          <input type="text" name="portal_name" value="{{ appearance.portal_name or 'GLPI Reports' }}" maxlength="50" style="height:32px;width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:0 10px;font-size:12px">
+        </div>
+
+        <div>
+          <label style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">
+            Sigla
+          </label>
+          <input type="text" name="portal_initials" value="{{ appearance.portal_initials or 'GR' }}" maxlength="3" oninput="this.value = this.value.toUpperCase()" style="height:32px;width:60px;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:0 10px;font-size:12px;text-transform:uppercase;text-align:center">
+        </div>
+      </div>
+    </div>
+
+    <section class="panel">
+      <h2>Tipografia</h2>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+        <label style="display:block;font-size:12px;color:var(--color-text-secondary)">Fonte
+          <select class="form-select mt-1" name="font_family" id="font_family">
+            <option value="system-ui, sans-serif" {% if appearance.font_family == 'system-ui, sans-serif' %}selected{% endif %}>System UI (padrão)</option>
+            <option value="Arial,sans-serif" {% if appearance.font_family == 'Arial,sans-serif' %}selected{% endif %}>Arial</option>
+            <option value="Verdana,sans-serif" {% if appearance.font_family == 'Verdana,sans-serif' %}selected{% endif %}>Verdana</option>
+            <option value="'Trebuchet MS',sans-serif" {% if appearance.font_family == "'Trebuchet MS',sans-serif" %}selected{% endif %}>Trebuchet MS</option>
+            <option value="Georgia,serif" {% if appearance.font_family == 'Georgia,serif' %}selected{% endif %}>Georgia (serifada)</option>
+          </select>
+        </label>
+        <label style="display:block;font-size:12px;color:var(--color-text-secondary)">Tamanho
+          <select class="form-select mt-1" name="font_size" id="font_size">
+            <option value="compact" {% if appearance.font_size == 'compact' %}selected{% endif %}>Compacto (12px)</option>
+            <option value="normal" {% if appearance.font_size == 'normal' or not appearance.font_size %}selected{% endif %}>Normal (13px)</option>
+            <option value="spacious" {% if appearance.font_size == 'spacious' %}selected{% endif %}>Espaçoso (15px)</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem">
+      <div style="font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:6px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:12px">
+        Fuso horário
+      </div>
+
+      <div>
+        <label style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">
+          Timezone do portal
+        </label>
+        <select name="timezone" style="height:32px;width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:0 10px;font-size:12px">
+          <optgroup label="Brasil">
+            <option value="America/Sao_Paulo" {% if appearance.timezone == 'America/Sao_Paulo' or not appearance.timezone %}selected{% endif %}>Brasília / São Paulo (UTC-3)</option>
+            <option value="America/Manaus" {% if appearance.timezone == 'America/Manaus' %}selected{% endif %}>Manaus / Amazonas (UTC-4)</option>
+            <option value="America/Belem" {% if appearance.timezone == 'America/Belem' %}selected{% endif %}>Belém / Pará (UTC-3)</option>
+            <option value="America/Fortaleza" {% if appearance.timezone == 'America/Fortaleza' %}selected{% endif %}>Fortaleza / Ceará (UTC-3)</option>
+            <option value="America/Recife" {% if appearance.timezone == 'America/Recife' %}selected{% endif %}>Recife / Pernambuco (UTC-3)</option>
+            <option value="America/Maceio" {% if appearance.timezone == 'America/Maceio' %}selected{% endif %}>Maceió / Alagoas (UTC-3)</option>
+            <option value="America/Bahia" {% if appearance.timezone == 'America/Bahia' %}selected{% endif %}>Salvador / Bahia (UTC-3)</option>
+            <option value="America/Cuiaba" {% if appearance.timezone == 'America/Cuiaba' %}selected{% endif %}>Cuiabá / Mato Grosso (UTC-4)</option>
+            <option value="America/Porto_Velho" {% if appearance.timezone == 'America/Porto_Velho' %}selected{% endif %}>Porto Velho / Rondônia (UTC-4)</option>
+            <option value="America/Boa_Vista" {% if appearance.timezone == 'America/Boa_Vista' %}selected{% endif %}>Boa Vista / Roraima (UTC-4)</option>
+            <option value="America/Rio_Branco" {% if appearance.timezone == 'America/Rio_Branco' %}selected{% endif %}>Rio Branco / Acre (UTC-5)</option>
+            <option value="America/Noronha" {% if appearance.timezone == 'America/Noronha' %}selected{% endif %}>Fernando de Noronha (UTC-2)</option>
+          </optgroup>
+
+          <optgroup label="Internacional">
+            <option value="UTC" {% if appearance.timezone == 'UTC' %}selected{% endif %}>UTC (Coordenado Universal)</option>
+            <option value="Europe/Lisbon" {% if appearance.timezone == 'Europe/Lisbon' %}selected{% endif %}>Lisboa / Portugal (UTC+0/+1)</option>
+            <option value="Europe/London" {% if appearance.timezone == 'Europe/London' %}selected{% endif %}>Londres (UTC+0/+1)</option>
+            <option value="Europe/Madrid" {% if appearance.timezone == 'Europe/Madrid' %}selected{% endif %}>Madrid / Espanha (UTC+1/+2)</option>
+            <option value="Europe/Paris" {% if appearance.timezone == 'Europe/Paris' %}selected{% endif %}>Paris / França (UTC+1/+2)</option>
+            <option value="America/New_York" {% if appearance.timezone == 'America/New_York' %}selected{% endif %}>Nova York (UTC-5/-4)</option>
+            <option value="America/Chicago" {% if appearance.timezone == 'America/Chicago' %}selected{% endif %}>Chicago (UTC-6/-5)</option>
+            <option value="America/Denver" {% if appearance.timezone == 'America/Denver' %}selected{% endif %}>Denver (UTC-7/-6)</option>
+            <option value="America/Los_Angeles" {% if appearance.timezone == 'America/Los_Angeles' %}selected{% endif %}>Los Angeles (UTC-8/-7)</option>
+          </optgroup>
+        </select>
+
+        <div style="font-size:10px;color:var(--color-text-tertiary);margin-top:5px">
+          Afeta todas as datas exibidas no portal — criação, modificação, execução e logs.
+        </div>
+      </div>
+    </div>
+
+    <section class="panel">
+      <h2>Fundo da tela de login</h2>
+      <div style="display:flex;gap:4px;margin-bottom:12px">
+        <button type="button" id="tab-color" onclick="switchTab('color')" style="font-size:11px;padding:5px 12px;border-radius:6px;cursor:pointer;border:0.5px solid var(--color-border-tertiary)">Cor sólida</button>
+        <button type="button" id="tab-image" onclick="switchTab('image')" style="font-size:11px;padding:5px 12px;border-radius:6px;cursor:pointer;border:0.5px solid var(--color-border-tertiary)">Imagem de fundo</button>
+      </div>
+      <input type="hidden" name="login_bg_mode" id="input-bg-mode" value="{{ appearance.login_bg_mode or 'color' }}">
+
+      <div id="panel-color">
+        <input type="hidden" name="login_bg_color" id="login_bg_color" value="{{ appearance.login_bg_color or '#1e2a3a' }}">
+        <div id="bg-swatches" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+          {% for color, name in [('#1e2a3a','Azul escuro (padrão)'),('#26215C','Roxo escuro'),('#04342C','Verde escuro'),('#2C2C2A','Cinza escuro'),('#042C53','Azul navy'),('#378ADD','Azul'),('#534AB7','Roxo'),('#1D9E75','Verde'),('#0d1117','Quase preto'),('#1a1a2e','Noite'),('#993C1D','Terracota'),('#412402','Âmbar escuro')] %}
+          <div class="bg-swatch" data-color="{{ color }}" data-name="{{ name }}" title="{{ name }}" style="width:28px;height:28px;border-radius:6px;cursor:pointer;border:2px solid transparent;background:{{ color }}"></div>
+          {% endfor %}
+        </div>
+        <div id="color-preview" style="height:40px;border-radius:6px;color:#fff;display:flex;align-items:center;padding:0 12px;font-size:12px"></div>
+      </div>
+
+      <div id="panel-image" style="display:none">
+        {% if appearance.login_bg_image %}
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <img src="/static/{{ appearance.login_bg_image }}" alt="Imagem atual" style="width:96px;height:58px;object-fit:cover;border-radius:6px;border:1px solid var(--color-border-tertiary)">
+          <button type="submit" form="form-remove-image" style="font-size:12px;padding:6px 12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);cursor:pointer">Remover</button>
+        </div>
+        {% endif %}
+        <label for="login_bg_image" style="display:flex;align-items:center;gap:10px;border:1px dashed var(--color-border-secondary);border-radius:8px;padding:16px;cursor:pointer;margin-bottom:14px">
+          <i class="ti ti-photo" style="font-size:22px;color:#378ADD" aria-hidden="true"></i>
+          <span style="display:block">
+            <strong style="display:block;font-size:13px;color:var(--color-text-primary)">Clique para enviar</strong>
+            <small style="color:var(--color-text-tertiary)">JPG, PNG — máx. 2MB</small>
+          </span>
+        </label>
+        <input class="form-control" type="file" name="login_bg_image" id="login_bg_image" accept=".jpg,.jpeg,.png">
+
+        <input type="hidden" name="login_overlay_color" id="login_overlay_color" value="{{ appearance.login_overlay_color or '#1e2a3a' }}">
+        <div id="overlay-swatches" style="display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 12px">
+          {% for color, name in [('#1e2a3a','Azul escuro'),('#000000','Preto'),('#26215C','Roxo escuro'),('#04342C','Verde escuro'),('#042C53','Azul navy'),('#2C2C2A','Cinza escuro'),('#378ADD','Azul'),('#534AB7','Roxo'),('#993C1D','Terracota'),('#ffffff','Branco'),('#1D9E75','Verde'),('#D4537E','Rosa')] %}
+          <div class="overlay-swatch" data-color="{{ color }}" title="{{ name }}" style="width:28px;height:28px;border-radius:6px;cursor:pointer;border:2px solid transparent;background:{{ color }}"></div>
+          {% endfor %}
+        </div>
+        <label style="display:block;font-size:12px;color:var(--color-text-secondary)">Opacidade <span id="opacity-value">{{ appearance.login_overlay_opacity or '50' }}%</span>
+          <input class="form-range" type="range" name="login_overlay_opacity" id="login_overlay_opacity" min="0" max="100" step="1" value="{{ appearance.login_overlay_opacity or '50' }}">
+        </label>
+        <small style="color:var(--color-text-tertiary)">0% = imagem pura · 100% = cor pura</small>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Textos da tela de login</h2>
+      <label class="form-label" for="login_title">Título</label>
+      <input class="form-control mb-3" name="login_title" id="login_title" value="{{ appearance.login_title }}">
+      <label class="form-label" for="login_subtitle">Subtítulo</label>
+      <input class="form-control mb-3" name="login_subtitle" id="login_subtitle" value="{{ appearance.login_subtitle }}">
+      <label class="form-label" for="login_btn_text">Texto do botão entrar</label>
+      <input class="form-control" name="login_btn_text" id="login_btn_text" value="{{ appearance.login_btn_text }}">
+    </section>
+  </form>
+
+  <form id="form-pdf-appearance" method="post" action="/admin/appearance/pdf" enctype="multipart/form-data" class="panel">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Relatório PDF</h2>
+
+    <div style="font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:6px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:12px">
+      Cabeçalho e rodapé
+    </div>
+
+    <div style="margin-bottom:14px">
+      <label for="pdf_logo" style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">
+        Logo da empresa
+      </label>
+      {% if pdf_config.pdf_logo %}
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <img src="{{ pdf_config.pdf_logo }}" alt="Logo atual do PDF" style="max-width:150px;max-height:54px;object-fit:contain;border:1px solid var(--color-border-tertiary);border-radius:6px;background:#fff;padding:6px">
+        <button type="submit" name="remove_pdf_logo" value="1" style="font-size:12px;padding:6px 12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);cursor:pointer">Remover logo</button>
+      </div>
+      {% endif %}
+      <label for="pdf_logo" style="display:flex;align-items:center;gap:10px;border:1px dashed var(--color-border-secondary);border-radius:8px;padding:14px;cursor:pointer;margin-bottom:8px">
+        <i class="ti ti-photo" style="font-size:22px;color:#378ADD" aria-hidden="true"></i>
+        <span style="display:block">
+          <strong style="display:block;font-size:13px;color:var(--color-text-primary)">Clique para enviar</strong>
+          <small style="color:var(--color-text-tertiary)">PNG, JPG — máx. 2MB</small>
+        </span>
+      </label>
+      <input class="form-control" type="file" name="pdf_logo" id="pdf_logo" accept=".jpg,.jpeg,.png">
+    </div>
+
+    <label class="form-label" for="pdf_titulo">Título do relatório PDF</label>
+    <input class="form-control mb-3" name="pdf_titulo" id="pdf_titulo" maxlength="120" value="{{ pdf_config.pdf_titulo or appearance.portal_name or 'GLPI Reports' }}">
+
+    <label class="form-label" for="pdf_subtitulo">Subtítulo (opcional)</label>
+    <input class="form-control mb-3" name="pdf_subtitulo" id="pdf_subtitulo" maxlength="180" value="{{ pdf_config.pdf_subtitulo }}" placeholder="Portal de Indicadores de TI">
+
+    <label class="form-label" for="pdf_rodape">Rodapé (opcional)</label>
+    <input class="form-control mb-3" name="pdf_rodape" id="pdf_rodape" maxlength="180" value="{{ pdf_config.pdf_rodape }}" placeholder="Documento gerado automaticamente">
+
+    <button type="submit" style="font-size:12px;padding:6px 16px;background:#378ADD;color:#fff;border:none;border-radius:6px;cursor:pointer">Salvar configurações PDF</button>
+  </form>
+  </div>
+
+  <aside>
+    <section class="panel">
+      <h2>Tela de login</h2>
+      <div id="pv-login" style="width:100%;min-height:260px;border:1px solid var(--color-border-tertiary);border-radius:8px;display:grid;grid-template-columns:40% 60%;overflow:hidden;background:#f4f6fa">
+        <div id="pv-login-bg" style="position:relative;overflow:hidden;background:{{ appearance.login_bg_color or '#1e2a3a' }}">
+          <div id="pv-login-img" style="position:absolute;inset:0;background-size:cover;background-position:center"></div>
+          <div id="pv-login-overlay" style="position:absolute;inset:0;background:{{ appearance.login_overlay_color or '#1e2a3a' }};opacity:{{ ((appearance.login_overlay_opacity or '50') | int) / 100 }}"></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;padding:22px">
+          <div style="background:#fff;border:1px solid var(--color-border-tertiary);border-radius:8px;padding:18px;width:100%;box-shadow:0 8px 24px rgba(15,23,42,.05)">
+            <h3 id="pv-lt" style="font-size:18px;margin:0 0 4px;color:var(--color-text-primary)">{{ appearance.login_title }}</h3>
+            <p id="pv-ls" style="font-size:12px;margin:0 0 16px;color:var(--color-text-tertiary)">{{ appearance.login_subtitle }}</p>
+            <div style="height:32px;border:1px solid var(--color-border-tertiary);border-radius:6px;margin-bottom:8px"></div>
+            <div style="height:32px;border:1px solid var(--color-border-tertiary);border-radius:6px;margin-bottom:12px"></div>
+            <button id="pv-lb" type="button" style="width:100%;height:34px;background:#378ADD;color:#fff;border:0;border-radius:6px;font-size:12px">{{ appearance.login_btn_text }}</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="pv-font">
+      <h2 style="font-size:20px;margin-bottom:8px">Título de exemplo grande</h2>
+      <p style="margin-bottom:14px;color:var(--color-text-secondary)">Parágrafo de exemplo para validar espaçamento, peso visual e leitura dos relatórios.</p>
+      <label style="font-size:11px;color:var(--color-text-tertiary)">Label de formulário pequena</label>
+    </section>
+  </aside>
+</div>
+
+<form id="form-remove-image" method="post" action="/admin/appearance/remove-image">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+
+<script>
+  const currentImage = "{{ appearance.login_bg_image or '' }}";
+
+  function selected(name) {
+    return document.querySelector(`[name="${name}"]`);
+  }
+
+  function markSwatches(selector, color) {
+    document.querySelectorAll(selector).forEach((item) => {
+      item.style.outline = item.dataset.color.toLowerCase() === String(color).toLowerCase() ? "2px solid #111827" : "none";
+      item.style.outlineOffset = "2px";
+    });
+  }
+
+  function switchTab(tab) {
+    const isImage = tab === "image";
+    document.getElementById("panel-color").style.display = isImage ? "none" : "block";
+    document.getElementById("panel-image").style.display = isImage ? "block" : "none";
+    document.getElementById("input-bg-mode").value = tab;
+    document.getElementById("tab-color").style.background = isImage ? "transparent" : "#eef2ff";
+    document.getElementById("tab-image").style.background = isImage ? "#eef2ff" : "transparent";
+    updateLoginPreview();
+  }
+
+  function updateColorPreview() {
+    const input = document.getElementById("login_bg_color");
+    const swatch = document.querySelector(`.bg-swatch[data-color="${input.value}"]`);
+    const preview = document.getElementById("color-preview");
+    preview.style.background = input.value;
+    preview.textContent = swatch ? swatch.dataset.name : input.value;
+    markSwatches(".bg-swatch", input.value);
+  }
+
+  function updateLoginPreview() {
+    const mode = document.getElementById("input-bg-mode").value;
+    const bgColor = document.getElementById("login_bg_color").value;
+    const overlayColor = document.getElementById("login_overlay_color").value;
+    const opacity = document.getElementById("login_overlay_opacity").value;
+    const bg = document.getElementById("pv-login-bg");
+    const img = document.getElementById("pv-login-img");
+    const overlay = document.getElementById("pv-login-overlay");
+    bg.style.background = bgColor;
+    img.style.backgroundImage = mode === "image" && currentImage ? `url('/static/${currentImage}')` : "none";
+    overlay.style.background = overlayColor;
+    overlay.style.opacity = mode === "image" ? Number(opacity) / 100 : 0;
+    document.getElementById("opacity-value").textContent = `${opacity}%`;
+    markSwatches(".overlay-swatch", overlayColor);
+  }
+
+  function updateTexts() {
+    document.getElementById("pv-lt").textContent = document.getElementById("login_title").value;
+    document.getElementById("pv-ls").textContent = document.getElementById("login_subtitle").value;
+    document.getElementById("pv-lb").textContent = document.getElementById("login_btn_text").value;
+  }
+
+  function updateFontPreview() {
+    const sizeMap = { compact: ["12px", "1.4"], normal: ["13px", "1.6"], spacious: ["15px", "1.8"] };
+    const preview = document.getElementById("pv-font");
+    const selectedSize = sizeMap[document.getElementById("font_size").value] || sizeMap.normal;
+    preview.style.fontFamily = document.getElementById("font_family").value;
+    preview.style.fontSize = selectedSize[0];
+    preview.style.lineHeight = selectedSize[1];
+  }
+
+  document.querySelectorAll(".bg-swatch").forEach((item) => {
+    item.addEventListener("click", () => {
+      document.getElementById("login_bg_color").value = item.dataset.color;
+      updateColorPreview();
+      updateLoginPreview();
+    });
+  });
+  document.querySelectorAll(".overlay-swatch").forEach((item) => {
+    item.addEventListener("click", () => {
+      document.getElementById("login_overlay_color").value = item.dataset.color;
+      updateLoginPreview();
+    });
+  });
+  ["login_title", "login_subtitle", "login_btn_text"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", updateTexts);
+  });
+  document.getElementById("login_overlay_opacity").addEventListener("input", updateLoginPreview);
+  document.getElementById("font_family").addEventListener("change", updateFontPreview);
+  document.getElementById("font_size").addEventListener("change", updateFontPreview);
+
+  switchTab(document.getElementById("input-bg-mode").value || "color");
+  updateColorPreview();
+  updateLoginPreview();
+  updateTexts();
+  updateFontPreview();
+</script>
+{% endblock %}

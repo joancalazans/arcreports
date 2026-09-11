@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .sql-console-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+    align-items: start;
+  }
+  .sql-editor {
+    min-height: 240px;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 12px;
+    line-height: 1.6;
+    resize: vertical;
+  }
+  .sql-result-table {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .sql-result-table th {
+    position: sticky;
+    top: 0;
+    background: var(--color-background-secondary);
+    z-index: 1;
+  }
+  .sql-history-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0.5px solid var(--color-border-tertiary);
+    background: var(--color-background-primary);
+    color: var(--color-text-secondary);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sql-side-panel {
+    border-left: 0.5px solid var(--color-border-tertiary);
+    padding-left: 16px;
+  }
+  .sql-side-panel code,
+  .sql-example {
+    font-size: 11px;
+  }
+  .sql-example {
+    display: block;
+    white-space: pre-wrap;
+    color: var(--color-text-secondary);
+    background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 6px;
+    padding: 8px;
+  }
+  @media (max-width: 1100px) {
+    .sql-console-layout {
+      grid-template-columns: 1fr;
+    }
+    .sql-side-panel {
+      border-left: 0;
+      padding-left: 0;
+    }
+  }
+</style>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px">
+  <div>
+    <h1 style="font-size:22px;margin:0;color:var(--color-text-primary)">Console SQL</h1>
+    <p style="font-size:12px;color:var(--color-text-tertiary);margin:2px 0 0">Administração controlada do banco local do portal</p>
+  </div>
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#sqlInfoPanel" aria-expanded="true" aria-controls="sqlInfoPanel">
+    <i class="ti ti-info-circle" aria-hidden="true"></i>
+    Regras
+  </button>
+</div>
+
+<div class="sql-console-layout">
+  <section>
+    <form id="sqlConsoleForm" method="post" action="/admin/sql-console">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" id="sessionHistory" name="session_history" value="{{ history|tojson|forceescape }}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <label class="form-label" for="sqlQuery" style="font-size:12px;margin:0;color:var(--color-text-secondary)">Editor SQL</label>
+        <span id="charCount" style="font-size:11px;color:var(--color-text-tertiary)">0 caracteres</span>
+      </div>
+      <textarea class="form-control sql-editor" id="sqlQuery" name="sql_query" rows="10" spellcheck="false" autocomplete="off">{{ sql_query }}</textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <button type="submit" class="btn" style="background:#E6F1FB;border:0.5px solid #85B7EB;color:#185FA5">
+          <i class="ti ti-player-play" aria-hidden="true"></i>
+          Executar
+        </button>
+        <button type="button" id="clearSql" class="btn btn-outline-secondary">
+          <i class="ti ti-eraser" aria-hidden="true"></i>
+          Limpar
+        </button>
+      </div>
+    </form>
+
+    {% if warning %}
+    <div class="alert alert-warning mt-3" style="font-size:12px">{{ warning }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="alert alert-danger mt-3" style="font-size:12px;white-space:pre-wrap">{{ error }}</div>
+    {% endif %}
+
+    {% if result %}
+      {% if result.kind == 'rows' %}
+      <div style="margin-top:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
+          <strong style="font-size:13px;color:var(--color-text-primary)">{{ result.row_count }} registros encontrados</strong>
+          <div id="paginationInfo" style="font-size:11px;color:var(--color-text-tertiary)"></div>
+        </div>
+        <div class="table-responsive" style="max-height:560px;border:0.5px solid var(--color-border-tertiary);border-radius:6px">
+          <table class="table table-sm table-hover align-middle mb-0 sql-result-table" id="resultTable">
+            <thead>
+              <tr>
+                {% for column in result.columns %}
+                <th>{{ column }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in result.rows %}
+              <tr>
+                {% for column in result.columns %}
+                <td>{{ row[column] }}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="prevPage">Anterior</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="nextPage">Próxima</button>
+        </div>
+      </div>
+      {% else %}
+      <div class="alert alert-success mt-3" style="font-size:12px">{{ result.affected }} linhas afetadas</div>
+      {% endif %}
+    {% endif %}
+
+    <div style="margin-top:18px">
+      <h2 style="font-size:14px;margin:0 0 8px;color:var(--color-text-primary)">Histórico da sessão</h2>
+      {% if history %}
+      <div style="display:grid;gap:6px">
+        {% for item in history %}
+        <button type="button" class="sql-history-item" data-sql="{{ item|e }}">{{ item }}</button>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="font-size:12px;color:var(--color-text-tertiary);margin:0">Nenhum comando executado nesta sessão.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <aside class="collapse show sql-side-panel" id="sqlInfoPanel">
+    <h2 style="font-size:14px;margin:0 0 8px;color:var(--color-text-primary)">Escrita permitida</h2>
+    <ul style="font-size:12px;color:var(--color-text-secondary);padding-left:18px">
+      {% for table_name in allowed_write_tables %}
+      <li><code>{{ table_name }}</code></li>
+      {% endfor %}
+      {% for prefix in allowed_write_prefixes %}
+      <li><code>{{ prefix }}*</code></li>
+      {% endfor %}
+    </ul>
+
+    <h2 style="font-size:14px;margin:16px 0 8px;color:var(--color-text-primary)">Bloqueios</h2>
+    <ul style="font-size:12px;color:var(--color-text-secondary);padding-left:18px">
+      {% for item in blocked_operations %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+
+    <h2 style="font-size:14px;margin:16px 0 8px;color:var(--color-text-primary)">Exemplos</h2>
+    <code class="sql-example">UPDATE reports
+SET campo_sql_periodo = 'created_at'
+WHERE is_primary = 0;</code>
+    <code class="sql-example mt-2">ALTER TABLE relatorio_chamados
+ADD COLUMN created_at DATETIME NULL;</code>
+    <code class="sql-example mt-2">SELECT id, source_table
+FROM dashboard_sources
+WHERE default_time_field IS NULL;</code>
+  </aside>
+</div>
+
+<script>
+  const editor = document.getElementById("sqlQuery");
+  const charCount = document.getElementById("charCount");
+  const form = document.getElementById("sqlConsoleForm");
+  const historyField = document.getElementById("sessionHistory");
+  const perPage = {{ per_page }};
+  let currentPage = 1;
+
+  function updateCharCount() {
+    charCount.textContent = editor.value.length + " caracteres";
+  }
+
+  function updatePagination() {
+    const table = document.getElementById("resultTable");
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll("tbody tr"));
+    const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
+    currentPage = Math.min(currentPage, totalPages);
+    rows.forEach((row, index) => {
+      row.style.display = index >= (currentPage - 1) * perPage && index < currentPage * perPage ? "" : "none";
+    });
+    document.getElementById("paginationInfo").textContent = "Página " + currentPage + " de " + totalPages;
+    document.getElementById("prevPage").disabled = currentPage <= 1;
+    document.getElementById("nextPage").disabled = currentPage >= totalPages;
+  }
+
+  editor.addEventListener("input", updateCharCount);
+  editor.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+  document.getElementById("clearSql").addEventListener("click", () => {
+    editor.value = "";
+    updateCharCount();
+    editor.focus();
+  });
+  document.querySelectorAll(".sql-history-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      editor.value = button.dataset.sql || "";
+      updateCharCount();
+      editor.focus();
+    });
+  });
+  document.getElementById("prevPage")?.addEventListener("click", () => {
+    currentPage -= 1;
+    updatePagination();
+  });
+  document.getElementById("nextPage")?.addEventListener("click", () => {
+    currentPage += 1;
+    updatePagination();
+  });
+  form.addEventListener("submit", () => {
+    try {
+      const history = JSON.parse(historyField.value || "[]");
+      const sql = editor.value.trim();
+      if (sql) {
+        historyField.value = JSON.stringify([sql, ...history.filter((item) => item !== sql)].slice(0, 10));
+      }
+    } catch (error) {
+      historyField.value = "[]";
+    }
+  });
+  updateCharCount();
+  updatePagination();
+</script>
+{% endblock %}

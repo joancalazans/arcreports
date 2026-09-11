@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+{% block head %}
+<style>
+  .health-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+  .health-stat { background:var(--color-background-secondary); border:1px solid var(--border); border-radius:8px; padding:14px; }
+  .health-stat span { color:var(--muted); display:block; font-size:12px; }
+  .health-stat strong { display:block; font-size:20px; margin-top:4px; }
+  .health-title { align-items:center; display:flex; gap:9px; }
+  .health-title i { color:var(--accent); font-size:22px; }
+  .health-table-wrap { max-height:360px; overflow:auto; }
+  .health-table { font-size:12px; margin:0; }
+  .health-alert { border-left:5px solid #dc3545; }
+  .https-health-card { border-left:6px solid #dc3545; }
+  .https-health-card.https-ok { border-left-color:#198754; }
+  .https-health-card.https-warning { border-left-color:#ffc107; }
+  .https-health-card.https-danger { border-left-color:#dc3545; }
+  .https-status-title { align-items:center; display:flex; gap:10px; margin:0; }
+  .https-status-icon { font-size:24px; line-height:1; }
+  .console-sql-card { border-left:6px solid #6c757d; }
+  .console-sql-card.console-active { border-left-color:#0d6efd; }
+  .console-sql-card.console-inactive { border-left-color:#6c757d; }
+  .console-toggle-form { margin:0; }
+  .console-toggle-button { min-width:124px; }
+  .nginx-config-block {
+    background:#101418;
+    border:1px solid #2c343c;
+    border-radius:6px;
+    color:#f1f5f9;
+    font-family:var(--font-mono, monospace);
+    font-size:12px;
+    line-height:1.55;
+    max-height:420px;
+    overflow:auto;
+    padding:14px;
+    white-space:pre-wrap;
+  }
+  @media (max-width: 1000px) { .health-grid { grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Saúde do Sistema</h1>
+    <p>Capacidade, retenção, banco local e estado operacional do portal.</p>
+  </div>
+  <button class="btn btn-outline-primary" type="button" onclick="window.location.reload()">
+    <i class="ti ti-refresh"></i> Atualizar agora
+  </button>
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if message and message.startswith('Console SQL') %}
+<div class="toast-container position-fixed top-0 end-0 p-3">
+  <div id="systemHealthToast" class="toast align-items-center {% if 'desativado' in message %}text-bg-warning{% else %}text-bg-success{% endif %} border-0" role="status" aria-live="polite" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body">{{ message }}</div>
+      <button class="btn-close btn-close-white me-2 m-auto" type="button" data-bs-dismiss="toast" aria-label="Fechar"></button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<section class="panel {% if disk.percent > 85 %}health-alert{% endif %}">
+  <div class="panel-header">
+    <h2 class="health-title"><i class="ti ti-device-floppy"></i> Disco</h2>
+    <strong>{{ disk.percent }}%</strong>
+  </div>
+  {% if disk.percent > 85 %}
+  <div class="alert alert-danger">Uso de disco crítico. Libere espaço antes que o portal fique sem capacidade de gravação.</div>
+  {% endif %}
+  <div class="health-grid mb-3">
+    <div class="health-stat"><span>Total</span><strong>{{ disk.total_gb }} GB</strong></div>
+    <div class="health-stat"><span>Usado</span><strong>{{ disk.used_gb }} GB</strong></div>
+    <div class="health-stat"><span>Livre</span><strong>{{ disk.free_gb }} GB</strong></div>
+  </div>
+  <div class="progress" style="height:18px">
+    <div class="progress-bar bg-{{ disk.level }}" style="width:{{ disk.percent }}%">{{ disk.percent }}%</div>
+  </div>
+</section>
+
+{% set cert_expiring = https_status.cert_days_remaining is not none and https_status.cert_days_remaining < 30 and not https_status.cert_expired %}
+{% set https_ok = https_status.https_configured and not https_status.cert_expired and not cert_expiring %}
+<section class="panel https-health-card {% if https_ok %}https-ok{% elif cert_expiring %}https-warning{% else %}https-danger{% endif %}">
+  <div class="panel-header">
+    <h2 class="https-status-title">
+      {% if https_ok %}
+        <span class="https-status-icon" aria-hidden="true">✅</span> HTTPS configurado
+      {% elif https_status.https_configured and https_status.cert_expired %}
+        <span class="https-status-icon" aria-hidden="true">❌</span> Certificado SSL expirado
+      {% elif cert_expiring %}
+        <span class="https-status-icon" aria-hidden="true">⚠️</span> Certificado expirando em {{ https_status.cert_days_remaining }} dias
+      {% else %}
+        <span class="https-status-icon" aria-hidden="true">❌</span> HTTPS não configurado
+      {% endif %}
+    </h2>
+    {% if https_status.nginx_config_path %}
+      <span class="badge text-bg-secondary">{{ https_status.nginx_config_path }}</span>
+    {% endif %}
+  </div>
+
+  {% if https_ok %}
+    <p class="mb-1">Certificado válido por {{ https_status.cert_days_remaining }} dias.</p>
+    <p class="muted mb-0">Expira em: {{ https_status.cert_expires_at|portal_dt('%d/%m/%Y') }}</p>
+  {% elif https_status.https_configured and https_status.cert_expired %}
+    <p class="mb-1">Renove imediatamente.</p>
+    {% if https_status.cert_expires_at %}
+      <p class="muted mb-0">Expirou em: {{ https_status.cert_expires_at|portal_dt('%d/%m/%Y') }}</p>
+    {% endif %}
+  {% elif cert_expiring %}
+    <p class="mb-1">Renove antes de {{ https_status.cert_expires_at|portal_dt('%d/%m/%Y') }}.</p>
+    {% if https_status.cert_path %}
+      <p class="muted mb-0">Certificado: <code>{{ https_status.cert_path }}</code></p>
+    {% endif %}
+  {% else %}
+    <p class="mb-1">As credenciais trafegam em texto claro.</p>
+    <p class="mb-3">Configure SSL no Nginx antes de disponibilizar em produção.</p>
+    <button class="btn btn-danger" type="button" data-bs-toggle="modal" data-bs-target="#nginxSslConfigModal">
+      Ver configuração recomendada
+    </button>
+  {% endif %}
+</section>
+
+<section class="panel console-sql-card {% if sql_console_status.enabled %}console-active{% else %}console-inactive{% endif %}">
+  <div class="panel-header">
+    <h2 class="health-title"><i class="ti ti-terminal"></i> Console SQL</h2>
+    <form class="console-toggle-form" method="post" action="/admin/system-health/sql-console/toggle">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn console-toggle-button {% if sql_console_status.enabled %}btn-primary{% else %}btn-outline-secondary{% endif %}" type="submit">
+        <span aria-hidden="true">●</span> {{ sql_console_status.label }}
+      </button>
+    </form>
+  </div>
+  <p class="mb-0">Permite executar queries diretamente no banco. Desative se não necessário.</p>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <h2 class="health-title"><i class="ti ti-file-text"></i> Logs de Auditoria</h2>
+    <span class="badge text-bg-secondary">Retenção: {{ retention_days }} dias</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table health-table align-middle">
+      <thead><tr><th>Tabela</th><th>Total</th><th>Mais antigo</th><th>Mais recente</th></tr></thead>
+      <tbody>
+      {% for item in audit_tables %}
+        <tr>
+          <td><code>{{ item.table }}</code></td>
+          <td>{{ item.total|format_number }}</td>
+          <td>{{ item.oldest|portal_dt if item.oldest else '—' }}</td>
+          <td>{{ item.newest|portal_dt if item.newest else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">Próxima limpeza automática estimada: {{ next_cleanup|portal_dt }}.</p>
+  <p class="muted mb-0">Retenção de logs: {{ retention_days }} dias (configurável via <code>system_config</code>).</p>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <h2 class="health-title"><i class="ti ti-camera"></i> Snapshots</h2>
+    <span>{{ snapshots.count }} arquivos · {{ snapshots.total_gb }} GB</span>
+  </div>
+  <div class="health-grid mb-3">
+    <div class="health-stat"><span>Quantidade</span><strong>{{ snapshots.count }}</strong></div>
+    <div class="health-stat"><span>Política</span><strong class="fs-6">máx {{ snapshots.policy.max_count }} arquivos / {{ snapshots.policy.max_gb }} GB</strong></div>
+    <div class="health-stat"><span>Limpeza automática</span><strong class="fs-6">Ativa</strong></div>
+    <div class="health-stat"><span>Mais antigo</span><strong class="fs-6">{{ snapshots.oldest|portal_dt if snapshots.oldest else '—' }}</strong></div>
+    <div class="health-stat"><span>Mais recente</span><strong class="fs-6">{{ snapshots.newest|portal_dt if snapshots.newest else '—' }}</strong></div>
+  </div>
+  <p class="muted">
+    Política atual removeria {{ snapshots.cleanup_plan.delete_count }} arquivo(s)
+    e liberaria {{ snapshots.cleanup_plan.delete_gb }} GB.
+  </p>
+  <form method="post" action="/admin/system-health/snapshots/create">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="input-group mb-3">
+      <input type="text" name="label" class="form-control"
+             placeholder="Label do snapshot (ex: pre_alembic)" maxlength="40">
+      <button type="submit" class="btn btn-primary">Criar Snapshot</button>
+    </div>
+  </form>
+  <div class="alert alert-info">
+    <strong>Restauração:</strong>
+    Para restaurar um snapshot, execute como root:
+    <code>mysql -u root -p reports &lt; /opt/sites/glpi-portal/snapshots/arquivo.sql</code>
+  </div>
+  <div class="table-responsive mb-3">
+    <table class="table health-table align-middle">
+      <thead><tr><th>10 mais recentes</th><th>Tamanho</th><th>Integridade</th><th>Data</th></tr></thead>
+      <tbody>
+      {% for item in snapshots.recent %}
+        <tr>
+          <td><code>{{ item.name }}</code></td><td>{{ item.size_mb }} MB</td>
+          <td>
+            {% if item.integrity == 'invalid' %}<span class="badge bg-danger">Inválido</span>
+            {% elif item.integrity == 'incomplete' %}<span class="badge bg-warning text-dark">Incompleto</span>
+            {% else %}<span class="badge bg-success">OK</span>{% endif %}
+          </td>
+          <td>{{ item.modified_at|portal_dt }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="text-muted">Nenhum snapshot encontrado.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex align-items-end gap-2 flex-wrap">
+    <div>
+      <label class="form-label" for="snapshotDays">Excluir snapshots com mais de</label>
+      <div class="input-group">
+        <input class="form-control" id="snapshotDays" type="number" value="30" min="1" max="3650" style="max-width:110px">
+        <span class="input-group-text">dias</span>
+      </div>
+    </div>
+    <button class="btn btn-outline-danger" id="previewSnapshotCleanup" type="button">Ver e excluir</button>
+    <form method="post" action="/admin/system-health/snapshots/cleanup-policy">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-danger" type="submit">Limpar agora</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <h2 class="health-title"><i class="ti ti-database"></i> Banco Local</h2>
+    <span>{{ database.total_gb }} GB · {{ database.table_count }} tabelas</span>
+  </div>
+  <div class="health-grid mb-3">
+    <div class="health-stat">
+      <label for="auto-index-threshold-input" style="font-size:13px;font-weight:500">
+        Threshold auto-index (relatórios locais)
+      </label>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+        <input type="number" id="auto-index-threshold-input" class="form-control form-control-sm"
+               style="width:120px" value="{{ auto_index_threshold }}" min="0" step="100">
+        <span style="font-size:12px;color:var(--color-text-tertiary)">linhas</span>
+        <button class="btn btn-sm btn-outline-primary" type="button" onclick="salvarThresholdAutoIndex()">Salvar</button>
+      </div>
+      <p style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px">
+        Tabelas com menos linhas que este valor não recebem índices automáticos no job diário.
+        Conectores sempre indexam independente deste valor.
+      </p>
+    </div>
+    <div class="health-stat">
+      <span>Tabelas acima do threshold</span>
+      <strong>{{ auto_index.large_tables|format_number }}</strong>
+    </div>
+    <div class="health-stat">
+      <span>Com índice de controle</span>
+      <strong>{{ auto_index.indexed_tables|format_number }}</strong>
+    </div>
+  </div>
+  <div class="row g-4">
+    <div class="col-lg-5">
+      <h3 class="fs-6">Top 5 tabelas por tamanho</h3>
+      <div class="table-responsive">
+        <table class="table health-table">
+          <thead><tr><th>Tabela</th><th>Linhas</th><th>MB</th></tr></thead>
+          <tbody>
+          {% for item in database.top_tables %}
+            <tr><td><code>{{ item.name }}</code></td><td>{{ item.rows|format_number }}</td><td>{{ item.size_mb }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <h3 class="fs-6">Tabelas locais de relatórios</h3>
+      <div class="health-table-wrap">
+        <table class="table health-table">
+          <thead><tr><th>Tabela</th><th>Linhas estimadas</th><th>MB</th></tr></thead>
+          <tbody>
+          {% for item in database.report_tables %}
+            <tr><td><code>{{ item.name }}</code></td><td>{{ item.rows|format_number }}</td><td>{{ item.size_mb }}</td></tr>
+          {% else %}
+            <tr><td colspan="3" class="text-muted">Nenhuma tabela correspondente.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <h2 class="health-title"><i class="ti ti-activity-heartbeat"></i> Portal</h2>
+  </div>
+  <div class="health-grid mb-4">
+    <div class="health-stat"><span>Python</span><strong>{{ python_version }}</strong></div>
+    <div class="health-stat">
+      <span>Última execução ETL</span>
+      <strong class="fs-6">{{ last_etl.status if last_etl else 'Sem execução' }}</strong>
+      <small>{{ last_etl.started_at|portal_dt if last_etl else '—' }}</small>
+    </div>
+    <div class="health-stat">
+      <span>Último relatório executado</span>
+      <strong class="fs-6">{{ last_report_name or 'Sem execução' }}</strong>
+      <small>{{ last_report_execution.executed_at|portal_dt if last_report_execution else '—' }}</small>
+    </div>
+  </div>
+  <h3 class="fs-6">Rate limiting — IPs bloqueados</h3>
+  <div class="table-responsive">
+    <table class="table health-table align-middle">
+      <thead><tr><th>IP</th><th>Tentativas</th><th>Tempo restante</th><th></th></tr></thead>
+      <tbody>
+      {% for item in blocked_ips %}
+        <tr>
+          <td><code>{{ item.ip }}</code></td>
+          <td>{{ item.attempts }}</td>
+          <td>{{ item.remaining_minutes }} min</td>
+          <td class="text-end">
+            <form method="post" action="/admin/system-health/rate-limit/unblock">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="ip_address" value="{{ item.ip }}">
+              <button class="btn btn-sm btn-outline-danger" type="submit">Desbloquear</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="text-muted">Nenhum IP bloqueado</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="modal fade" id="snapshotCleanupModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5">Confirmar exclusão de snapshots</h2>
+        <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p id="snapshotCleanupSummary"></p>
+        <ul id="snapshotCleanupList" class="small"></ul>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
+        <form method="post" action="/admin/system-health/snapshots/delete">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input id="snapshotCleanupDays" type="hidden" name="days" value="30">
+          <button class="btn btn-danger" id="confirmSnapshotCleanup" type="submit">Excluir snapshots listados</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="nginxSslConfigModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5">Configuração Nginx recomendada</h2>
+        <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <ol class="mb-3">
+          <li class="mb-3">
+            Copie o bloco abaixo e salve em <code>/etc/nginx/conf.d/glpi-portal.conf</code>,
+            substituindo o conteúdo atual:
+          </li>
+          <li class="mb-3">
+            Coloque seu certificado em:<br>
+            <code>/etc/pki/tls/certs/portal.pem</code><br>
+            <code>/etc/pki/tls/private/portal.key</code>
+          </li>
+          <li>
+            Teste e recarregue o Nginx:<br>
+            <code>sudo nginx -t</code><br>
+            <code>sudo systemctl reload nginx</code>
+          </li>
+        </ol>
+        <pre class="nginx-config-block mb-0"><code id="nginxSslConfigCode">{{ nginx_ssl_config }}</code></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" id="copyNginxSslConfig" type="button">Copiar configuração</button>
+        <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const csrfToken = {{ csrf_token|tojson }};
+  async function salvarThresholdAutoIndex() {
+    const val = document.getElementById("auto-index-threshold-input")?.value;
+    if (val === "" || isNaN(val) || parseInt(val, 10) < 0) {
+      alert("Valor inválido.");
+      return;
+    }
+    const response = await fetch("/admin/system-health/config", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-CSRF-Token": csrfToken,
+      },
+      body: new URLSearchParams({
+        csrf_token: csrfToken,
+        key: "auto_index_threshold_rows",
+        value: val,
+      }),
+    });
+    const data = await response.json();
+    if (data.success) {
+      alert("Threshold atualizado.");
+    } else {
+      alert(data.error || "Erro ao salvar.");
+    }
+  }
+  const cleanupModal = new bootstrap.Modal(document.getElementById("snapshotCleanupModal"));
+  const systemHealthToast = document.getElementById("systemHealthToast");
+  if (systemHealthToast) {
+    bootstrap.Toast.getOrCreateInstance(systemHealthToast, { delay: 3500 }).show();
+  }
+  document.getElementById("copyNginxSslConfig")?.addEventListener("click", async () => {
+    const button = document.getElementById("copyNginxSslConfig");
+    const code = document.getElementById("nginxSslConfigCode")?.textContent || "";
+    if (!navigator.clipboard || !code) return;
+    await navigator.clipboard.writeText(code);
+    const previousText = button.textContent;
+    button.textContent = "Copiado";
+    window.setTimeout(() => { button.textContent = previousText; }, 1800);
+  });
+  document.getElementById("previewSnapshotCleanup").addEventListener("click", async () => {
+    const days = Math.max(1, Math.min(3650, Number(document.getElementById("snapshotDays").value) || 30));
+    const response = await fetch(`/admin/system-health/snapshots/preview?days=${days}`);
+    const data = await response.json();
+    document.getElementById("snapshotCleanupDays").value = data.days;
+    document.getElementById("snapshotCleanupSummary").textContent =
+      `${data.count} arquivo(s), total de ${data.total_gb} GB, com mais de ${data.days} dias.`;
+    const list = document.getElementById("snapshotCleanupList");
+    list.replaceChildren();
+    if (data.files.length) {
+      data.files.forEach(item => {
+        const entry = document.createElement("li");
+        const name = document.createElement("code");
+        name.textContent = item.name;
+        entry.append(name, document.createTextNode(` — ${item.size_mb} MB`));
+        list.appendChild(entry);
+      });
+    } else {
+      const entry = document.createElement("li");
+      entry.textContent = "Nenhum snapshot será excluído.";
+      list.appendChild(entry);
+    }
+    document.getElementById("confirmSnapshotCleanup").disabled = data.count === 0;
+    cleanupModal.show();
+  });
+  window.setTimeout(() => window.location.reload(), 60000);
+</script>
+{% endblock %}

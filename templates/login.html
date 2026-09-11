@@ -1,0 +1,45 @@
+<!doctype html>
+{% set ap = appearance if appearance is defined else {} %}
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login - {{ ap.get('portal_name', 'GLPI Reports') }}</title>
+  <link href="{{ url_for('static', path='vendor/bootstrap/5.3.3/css/bootstrap.min.css') }}" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
+</head>
+<body class="login-page login-body" style="margin:0;padding:0;overflow:hidden">
+  <div style="position:fixed;top:0;left:0;width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;{% if ap.get('login_bg_mode') == 'image' and ap.get('login_bg_image') %}background-image:url('/static/{{ ap.login_bg_image }}');background-size:cover;background-position:center{% else %}background:linear-gradient(135deg, {{ ap.get('login_bg_color', '#1e2a3a') }} 0%, {{ ap.get('login_bg_color', '#1e2a3a') }} 55%, #f4f6fa 55%){% endif %}">
+    {% if ap.get('login_bg_mode') == 'image' and ap.get('login_bg_image') %}
+    <div style="position:absolute;inset:0;background:{{ ap.get('login_overlay_color', '#1e2a3a') }};opacity:{{ (ap.get('login_overlay_opacity', '50') | int) / 100 }};z-index:0;pointer-events:none"></div>
+    {% endif %}
+    <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:center;min-height:100vh">
+      <main class="login-panel">
+        <div class="login-brand">
+          <div class="brand-mark">{{ ap.get('portal_initials', 'GR') }}</div>
+          <div>
+            <h1>{{ appearance.login_title if appearance is defined else ap.get('portal_name', 'GLPI Reports') }}</h1>
+            <p>{{ appearance.login_subtitle if appearance is defined else 'Acesse os relatórios operacionais do GLPI.' }}</p>
+          </div>
+        </div>
+        {% if error %}
+          <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+        {% if warning %}
+          <div class="alert alert-warning">{{ warning }}</div>
+        {% endif %}
+        <form method="post" action="/login" class="login-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label class="form-label" for="username">Usuario</label>
+          <input class="form-control" id="username" name="username" autocomplete="username" required autofocus>
+
+          <label class="form-label mt-3" for="password">Senha</label>
+          <input class="form-control" id="password" name="password" type="password" autocomplete="current-password" required>
+
+          <button class="btn btn-primary w-100 mt-4" type="submit">{{ appearance.login_btn_text if appearance is defined else 'Entrar' }}</button>
+        </form>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

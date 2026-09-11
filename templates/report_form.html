@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+{% block content %}
+{% set report_type = report.report_type if report else 'manual' %}
+{% set label_style = "font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px" %}
+{% set input_style = "height:32px;width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:0 10px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)" %}
+{% set select_style = "height:32px;width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:0 10px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)" %}
+{% set card_style = "background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem" %}
+{% set section_title_style = "font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;padding-bottom:6px;border-bottom:0.5px solid var(--color-border-tertiary)" %}
+
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<form method="post" action="{{ '/reports/' ~ report.id ~ '/edit' if report else '/reports' }}" id="reportForm">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem">
+    <div>
+      <h1 style="font-size:18px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">
+        {% if report %}Editar relatorio{% else %}Novo relatorio{% endif %}
+      </h1>
+      <p style="font-size:13px;color:var(--color-text-tertiary);margin:0">
+        Cadastre SQL manualmente ou use o construtor visual com dados locais.
+      </p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <a href="/reports" style="font-size:12px;padding:6px 12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);text-decoration:none">Cancelar</a>
+      <button type="submit" style="font-size:12px;padding:6px 16px;background:#378ADD;color:#fff;border:none;border-radius:6px;cursor:pointer">Salvar relatorio</button>
+    </div>
+  </div>
+
+  <div style="{{ card_style }}">
+    <div style="{{ section_title_style }}">Identificacao</div>
+    <div style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:end;margin-bottom:10px">
+      <div>
+        <label class="form-label" for="name" style="{{ label_style }}">Nome</label>
+        <input class="form-control" id="name" name="name" value="{{ report.name if report else '' }}" required style="{{ input_style }}">
+      </div>
+      <div class="form-check form-switch" style="height:32px;display:flex;align-items:center;gap:8px;margin:0">
+        <input class="form-check-input" id="is_active" name="is_active" type="checkbox" {% if not report or report.is_active %}checked{% endif %}>
+        <label class="form-check-label" for="is_active" style="font-size:12px;color:var(--color-text-secondary)">Ativo</label>
+      </div>
+      <div class="form-check form-switch" style="height:32px;display:flex;align-items:center;gap:8px;margin:0">
+        <input class="form-check-input" id="is_primary" name="is_primary" type="checkbox" {% if report and report.is_primary %}checked{% endif %}>
+        <label class="form-check-label" for="is_primary" style="font-size:12px;color:var(--color-text-secondary)">Primario</label>
+      </div>
+    </div>
+    <label class="form-label" for="description" style="{{ label_style }}">Descricao</label>
+    <input class="form-control" id="description" name="description" value="{{ report.description if report and report.description else '' }}" style="{{ input_style }};height:60px">
+  </div>
+
+  <div style="{{ card_style }}">
+    <div style="{{ section_title_style }}">Destino e tipo</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div>
+        <label class="form-label" for="destination_table" style="{{ label_style }}">Tabela destino local</label>
+        <input class="form-control" id="destination_table" name="destination_table" value="{{ report.destination_table if report and report.destination_table else '' }}" placeholder="Ex: minha_tabela_relatorio" style="{{ input_style }}">
+      </div>
+      <div>
+        <label class="form-label" for="modo_salvamento" style="{{ label_style }}">Modo de salvamento</label>
+        {% set selected_save_mode = report.modo_salvamento if report and report.modo_salvamento else 'substituir' %}
+        <select class="form-select" id="modo_salvamento" name="modo_salvamento" style="{{ select_style }}">
+          <option value="substituir" {% if selected_save_mode == 'substituir' %}selected{% endif %}>Substituir</option>
+          <option value="acrescentar" {% if selected_save_mode == 'acrescentar' %}selected{% endif %}>Acrescentar</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label" style="{{ label_style }}">Tipo do relatorio</label>
+        <div class="segmented-choice" style="min-height:32px;display:flex;align-items:center;gap:6px">
+          <label><input type="radio" name="report_type" value="manual" {% if report_type != 'builder' %}checked{% endif %}> SQL Manual</label>
+          <label><input type="radio" name="report_type" value="builder" {% if report_type == 'builder' %}checked{% endif %}> Construtor Visual</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="{{ card_style }}">
+    <div style="{{ section_title_style }}">Filtro de periodo no modal</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="form-label" for="modo_filtro_periodo" style="{{ label_style }}">Modo de filtro</label>
+        {% set selected_period_mode = report.modo_filtro_periodo if report and report.modo_filtro_periodo else 'filtro_externo' %}
+        <select class="form-select" id="modo_filtro_periodo" name="modo_filtro_periodo" style="{{ select_style }}">
+          <option value="nenhum" {% if selected_period_mode == 'nenhum' %}selected{% endif %}>Nenhum</option>
+          <option value="filtro_externo" {% if selected_period_mode == 'filtro_externo' %}selected{% endif %}>Filtro externo</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="campo_sql_periodo" style="{{ label_style }}">Campo SQL do periodo</label>
+        <input class="form-control" id="campo_sql_periodo" name="campo_sql_periodo" value="{{ report.campo_sql_periodo if report and report.campo_sql_periodo else '' }}" placeholder="t.solvedate" style="{{ input_style }}">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="form-label" for="query_timeout_seconds" style="{{ label_style }}">Timeout de execução (s)</label>
+        <input class="form-control" id="query_timeout_seconds" name="query_timeout_seconds" type="number" min="1" max="600" value="{{ report.query_timeout_seconds if report and report.query_timeout_seconds else 60 }}" style="{{ input_style }}">
+        <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px;line-height:1.35">
+          Tempo para executar o relatório e gravar na tabela destino.<br>
+          Padrão: 60s | Máximo: 600s
+        </div>
+      </div>
+      <div>
+        <label class="form-label" for="filter_timeout_seconds" style="{{ label_style }}">Timeout do filtro (s)</label>
+        <input class="form-control" id="filter_timeout_seconds" name="filter_timeout_seconds" type="number" min="1" max="60" value="{{ report.filter_timeout_seconds if report and report.filter_timeout_seconds else 30 }}" style="{{ input_style }}">
+        <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px;line-height:1.35">
+          Tempo para o filtro interativo no modal.<br>
+          Padrão: 30s | Máximo: 60s
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="{{ card_style }}">
+    <div style="{{ section_title_style }}">HOME — RELATÓRIOS EM DESTAQUE</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+      <div>
+        <label class="form-label" for="category" style="{{ label_style }}">Categoria</label>
+        {% set selected_category = report.category if report and report.category else 'Departamento 1' %}
+        <select class="form-select" id="category" name="category" style="{{ select_style }}">
+          {% for category in categories %}
+          <option value="{{ category.name }}" {% if selected_category == category.name %}selected{% endif %}>{{ category.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="card_color" style="{{ label_style }}">COR DO CARD NA HOME</label>
+        <select class="form-select" id="card_color" name="card_color" style="{{ select_style }}">
+          {% set selected_color = report.card_color if report and report.card_color else 'blue' %}
+          {% for color, label in [('blue', 'Azul'), ('green', 'Verde'), ('amber', 'Amarelo'), ('red', 'Vermelho'), ('violet', 'Violeta'), ('slate', 'Cinza')] %}
+          <option value="{{ color }}" {% if selected_color == color %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="icon" style="{{ label_style }}">ÍCONE DO CARD NA HOME</label>
+        <input class="form-control" id="icon" name="icon" value="{{ report.icon if report and report.icon else '' }}" placeholder="BI" style="{{ input_style }}">
+      </div>
+      <div>
+        <label class="form-label" for="dashboard_order" style="{{ label_style }}">ORDEM NA HOME</label>
+        <input class="form-control" id="dashboard_order" name="dashboard_order" type="number" value="{{ report.dashboard_order if report else 100 }}" style="{{ input_style }}">
+      </div>
+    </div>
+    <div style="display:flex;gap:20px;align-items:center">
+      <div class="form-check form-switch" style="display:flex;align-items:center;gap:8px;margin:0">
+        <input class="form-check-input" id="show_on_dashboard" name="show_on_dashboard" type="checkbox" {% if report and report.show_on_dashboard %}checked{% endif %}>
+        <label class="form-check-label" for="show_on_dashboard" style="font-size:12px;color:var(--color-text-secondary)">Mostrar na Home</label>
+      </div>
+      <div class="form-check form-switch" style="display:flex;align-items:center;gap:8px;margin:0">
+        <input class="form-check-input" id="executive_highlight" name="executive_highlight" type="checkbox" {% if report and report.executive_highlight %}checked{% endif %}>
+        <label class="form-check-label" for="executive_highlight" style="font-size:12px;color:var(--color-text-secondary)">Destaque na Home</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="report-mode" id="manualMode" style="{{ card_style }}">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.05em">SQL</div>
+      <div style="display:flex;gap:6px"></div>
+    </div>
+    <textarea class="form-control sql-editor" id="sql_query" name="sql_query" placeholder="-- Exemplo para qualquer conector:
+SELECT campo1, campo2
+FROM nome_da_tabela
+WHERE condição
+
+-- Não qualifique o schema (ex: reports.)
+-- Use apenas o nome da tabela diretamente." style="height:320px;width:100%;font-family:var(--font-mono, monospace);font-size:12px;line-height:1.6;padding:12px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);resize:vertical;color:var(--color-text-primary);background:var(--color-background-primary)">{{ report.sql_query if report else '' }}</textarea>
+  </div>
+
+  <div class="report-mode" id="builderMode" style="{{ card_style }}">
+    <input type="hidden" name="builder_fields" id="builder_fields" value="{{ builder_config.fields|join(',') if builder_config.fields else '' }}">
+    <input type="hidden" name="builder_group_fields" id="builder_group_fields" value="{{ builder_config.group_fields|join(',') if builder_config.group_fields else '' }}">
+    <input type="hidden" name="builder_config" id="builder_config" value="{{ report.builder_config if report and report.builder_config else '' }}">
+
+    <div style="{{ section_title_style }}">Construtor visual</div>
+    <div class="builder-steps">
+      <section class="builder-step">
+        <h2>1. Fonte de dados</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label class="form-label" for="builder_source" style="{{ label_style }}">Tabela ou view local</label>
+            <select class="form-select" id="builder_source" name="builder_source" style="{{ select_style }}">
+              <option value="">Selecione</option>
+              {% set selected_source = builder_config.source if builder_config.source else '' %}
+              {% for table in builder_tables %}
+              <option value="{{ table.label }}" {% if selected_source == table.label %}selected{% endif %}>{{ table.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <div class="builder-source-meta" id="builderSourceMeta">Selecione uma fonte para carregar colunas.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="builder-step">
+        <h2>2. Campos</h2>
+        <div class="builder-column-list" id="builderColumns"></div>
+      </section>
+
+      <section class="builder-step">
+        <h2>3. Filtros visuais</h2>
+        <div class="builder-filter-grid">
+          {% for index in range(1, 6) %}
+          {% set filter = builder_config.filters[index - 1] if builder_config.filters and builder_config.filters|length >= index else {} %}
+          <div class="builder-filter-row">
+            <select class="form-select filter-field" name="filter_field_{{ index }}" data-selected="{{ filter.field or '' }}"></select>
+            <select class="form-select" name="filter_operator_{{ index }}">
+              {% for value, label in [('eq','igual'),('ne','diferente'),('contains','contem'),('starts','comeca com'),('ends','termina com'),('gt','maior que'),('lt','menor que'),('between_dates','entre datas'),('in_list','em lista'),('empty','vazio'),('not_empty','nao vazio')] %}
+              <option value="{{ value }}" {% if filter.operator == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <input class="form-control" name="filter_value_{{ index }}" value="{{ filter.value or '' }}" placeholder="Valor">
+            <input class="form-control" name="filter_value_end_{{ index }}" value="{{ filter.value_end or '' }}" placeholder="Valor final">
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="builder-step">
+        <h2>4. Agrupamentos e ordenacao</h2>
+        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px">
+          <div>
+            <label class="form-label" for="builder_aggregate" style="{{ label_style }}">Agregacao</label>
+            <select class="form-select" id="builder_aggregate" name="builder_aggregate" style="{{ select_style }}">
+              {% set aggregate = builder_config.aggregate if builder_config.aggregate else '' %}
+              <option value="">Nenhuma</option>
+              {% for value, label in [('count','Contagem'),('sum','Soma'),('avg','Media'),('max','Maximo'),('min','Minimo')] %}
+              <option value="{{ value }}" {% if aggregate == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="builder_aggregate_field" style="{{ label_style }}">Campo agregado</label>
+            <select class="form-select builder-column-select" id="builder_aggregate_field" name="builder_aggregate_field" data-selected="{{ builder_config.aggregate_field or '' }}" style="{{ select_style }}"></select>
+          </div>
+          <div>
+            <label class="form-label" for="builder_sort_field" style="{{ label_style }}">Ordenar por</label>
+            <select class="form-select builder-column-select" id="builder_sort_field" name="builder_sort_field" data-selected="{{ builder_config.sort_field or '' }}" style="{{ select_style }}"></select>
+          </div>
+          <div>
+            <label class="form-label" for="builder_sort_direction" style="{{ label_style }}">Direcao</label>
+            <select class="form-select" id="builder_sort_direction" name="builder_sort_direction" style="{{ select_style }}">
+              <option value="asc" {% if builder_config.sort_direction != 'desc' %}selected{% endif %}>Crescente</option>
+              <option value="desc" {% if builder_config.sort_direction == 'desc' %}selected{% endif %}>Decrescente</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="builder_limit" style="{{ label_style }}">Limite</label>
+            <input class="form-control" id="builder_limit" name="builder_limit" type="number" min="1" max="10000" value="{{ builder_config.limit if builder_config.limit else 500 }}" style="{{ input_style }}">
+          </div>
+        </div>
+      </section>
+
+      <section class="builder-step">
+        <div class="panel-header">
+          <h2>5. Preview</h2>
+          <button class="btn btn-outline-primary" type="button" id="builderPreviewButton">Gerar preview</button>
+        </div>
+        <div class="builder-preview-meta" id="builderPreviewMeta"></div>
+        <div class="table-responsive result-table" id="builderPreviewTable"></div>
+        {% if current_user and (current_user.is_admin or current_user.portal_relatorios) %}
+        <label class="form-label mt-3" for="builderGeneratedSql" style="{{ label_style }}">SQL gerado</label>
+        <textarea class="form-control sql-editor sql-editor-small" id="builderGeneratedSql" readonly>{{ report.sql_query if report and report.report_type == 'builder' else '' }}</textarea>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+
+  <div style="display:none">
+    <div id="scheduleOptions">
+      <div class="form-section-title">Agendamento</div>
+    </div>
+    <div id="scheduleAutoField">
+      <div class="form-check form-switch mt-2">
+        <input class="form-check-input" id="schedule_auto" name="schedule_auto" type="checkbox" {% if report and report.schedule_auto %}checked{% endif %}>
+        <label class="form-check-label" for="schedule_auto">Executar automaticamente</label>
+      </div>
+    </div>
+    <div id="scheduleHorariosField">
+      <label class="form-label" for="schedule_horarios">Horarios (ex: 07:00,21:00)</label>
+      <input class="form-control" id="schedule_horarios" name="schedule_horarios" value="{{ report.schedule_horarios if report and report.schedule_horarios else '' }}" placeholder="07:00,21:00">
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;margin-top:4px">
+    <a href="/reports" style="font-size:12px;padding:6px 12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);text-decoration:none">Cancelar</a>
+    <button type="submit" style="font-size:12px;padding:6px 16px;background:#378ADD;color:#fff;border:none;border-radius:6px;cursor:pointer">Salvar relatorio</button>
+  </div>
+</form>
+
+<script>
+  const initialBuilderConfig = {{ builder_config|tojson }};
+  let builderColumns = [];
+
+  const getReportType = () => document.querySelector("input[name='report_type']:checked")?.value || "manual";
+  const manualMode = document.getElementById("manualMode");
+  const builderMode = document.getElementById("builderMode");
+  const sqlQuery = document.getElementById("sql_query");
+  const builderSource = document.getElementById("builder_source");
+  const builderColumnsBox = document.getElementById("builderColumns");
+  const builderFields = document.getElementById("builder_fields");
+  const builderGroupFields = document.getElementById("builder_group_fields");
+  const builderConfig = document.getElementById("builder_config");
+  const destinationTable = document.getElementById("destination_table");
+  const scheduleOptions = document.getElementById("scheduleOptions");
+  const scheduleAutoField = document.getElementById("scheduleAutoField");
+  const scheduleHorariosField = document.getElementById("scheduleHorariosField");
+
+  function toggleMode() {
+    const isBuilder = getReportType() === "builder";
+    manualMode.style.display = isBuilder ? "none" : "block";
+    builderMode.style.display = isBuilder ? "block" : "none";
+    sqlQuery.required = !isBuilder;
+  }
+
+  function toggleScheduleOptions() {
+    const hasDestinationTable = destinationTable.value.trim().length > 0;
+    scheduleOptions.style.display = hasDestinationTable ? "block" : "none";
+    scheduleAutoField.style.display = hasDestinationTable ? "block" : "none";
+    scheduleHorariosField.style.display = hasDestinationTable ? "block" : "none";
+  }
+
+  function selectedSet(key) {
+    return new Set((initialBuilderConfig[key] || []).filter(Boolean));
+  }
+
+  function renderColumnControls(columns) {
+    const selectedFields = selectedSet("fields");
+    const selectedGroups = selectedSet("group_fields");
+    builderColumnsBox.innerHTML = columns.map((column, index) => `
+      <div class="builder-column-item">
+        <label>
+          <input type="checkbox" class="builder-field-check" value="${column.name}" ${selectedFields.has(column.name) ? "checked" : ""}>
+          ${column.name}
+        </label>
+        <input class="form-control form-control-sm builder-field-order" type="number" min="1" value="${index + 1}">
+        <label class="builder-group-toggle">
+          <input type="checkbox" class="builder-group-check" value="${column.name}" ${selectedGroups.has(column.name) ? "checked" : ""}>
+          Agrupar
+        </label>
+      </div>
+    `).join("");
+    fillColumnSelects(columns);
+    updateHiddenBuilderFields();
+  }
+
+  function fillColumnSelects(columns) {
+    document.querySelectorAll(".builder-column-select, .filter-field").forEach((select) => {
+      const selected = select.dataset.selected || "";
+      select.innerHTML = '<option value="">Selecione</option>' + columns.map((column) => (
+        `<option value="${column.name}" ${selected === column.name ? "selected" : ""}>${column.name}</option>`
+      )).join("");
+    });
+  }
+
+  function updateHiddenBuilderFields() {
+    const fields = [...document.querySelectorAll(".builder-field-check:checked")]
+      .map((checkbox) => {
+        const row = checkbox.closest(".builder-column-item");
+        return { name: checkbox.value, order: Number(row.querySelector(".builder-field-order").value || 999) };
+      })
+      .sort((a, b) => a.order - b.order)
+      .map((item) => item.name);
+    const groups = [...document.querySelectorAll(".builder-group-check:checked")].map((checkbox) => checkbox.value);
+    builderFields.value = fields.join(",");
+    builderGroupFields.value = groups.join(",");
+  }
+
+  function loadColumns() {
+    if (!builderSource.value) {
+      builderColumnsBox.innerHTML = '<div class="empty-state">Selecione uma fonte de dados.</div>';
+      return;
+    }
+    fetch(`/reports/builder/columns?source=${encodeURIComponent(builderSource.value)}`, { credentials: "same-origin" })
+      .then((response) => response.json())
+      .then((payload) => {
+        if (payload.error) throw new Error(payload.error);
+        builderColumns = payload.columns || [];
+        document.getElementById("builderSourceMeta").innerHTML =
+          `<strong>${payload.table.label}</strong><span>${payload.table.description || "Sem descricao cadastrada."}</span><span>Linhas estimadas: ${payload.table.estimated_rows}</span>`;
+        renderColumnControls(builderColumns);
+      })
+      .catch((error) => {
+        builderColumnsBox.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+      });
+  }
+
+  function builderFormData() {
+    updateHiddenBuilderFields();
+    const formData = new FormData(document.getElementById("reportForm"));
+    return new URLSearchParams(formData);
+  }
+
+  function renderPreview(payload) {
+    document.getElementById("builderPreviewMeta").textContent =
+      `${payload.row_count} linha(s) em ${payload.duration_ms} ms`;
+    const header = payload.columns.map((column) => `<th>${column}</th>`).join("");
+    const rows = payload.rows.map((row) => (
+      `<tr>${payload.columns.map((column) => `<td>${row[column] ?? ""}</td>`).join("")}</tr>`
+    )).join("");
+    document.getElementById("builderPreviewTable").innerHTML =
+      `<table class="table table-sm align-middle"><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
+    if (document.getElementById("builderGeneratedSql")) {
+      document.getElementById("builderGeneratedSql").value = payload.sql_query || "";
+    }
+    builderConfig.value = JSON.stringify(payload.config || {});
+  }
+
+  document.querySelectorAll("input[name='report_type']").forEach((input) => input.addEventListener("change", toggleMode));
+  destinationTable.addEventListener("input", toggleScheduleOptions);
+  builderSource.addEventListener("change", loadColumns);
+  builderColumnsBox.addEventListener("change", updateHiddenBuilderFields);
+  builderColumnsBox.addEventListener("input", updateHiddenBuilderFields);
+  document.getElementById("builderPreviewButton").addEventListener("click", () => {
+    fetch("/reports/builder/preview", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: builderFormData(),
+    })
+      .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
+      .then(({ ok, payload }) => {
+        if (!ok) throw new Error(payload.error || "Erro ao gerar preview.");
+        renderPreview(payload);
+      })
+      .catch((error) => {
+        document.getElementById("builderPreviewMeta").innerHTML = `<span class="text-danger">${error.message}</span>`;
+      });
+  });
+  document.getElementById("reportForm").addEventListener("submit", updateHiddenBuilderFields);
+
+  toggleMode();
+  toggleScheduleOptions();
+  if (builderSource.value) loadColumns();
+</script>
+{% endblock %}

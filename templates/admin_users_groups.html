@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% macro permission_checkbox(input_id, name, label, title, checked=False, form_id=None, disabled=False) -%}
+<div class="form-check d-inline-flex align-items-center mb-0">
+  <input class="form-check-input" id="{{ input_id }}" name="{{ name }}" type="checkbox" {% if form_id %}form="{{ form_id }}"{% endif %} {% if checked %}checked{% endif %} {% if disabled %}disabled{% endif %}>
+  <label class="form-check-label" for="{{ input_id }}">{{ label }}</label>
+  <span tabindex="0" data-bs-toggle="tooltip" data-bs-placement="right" title="{{ title }}">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-info-circle ms-1 text-muted" viewBox="0 0 16 16">
+      <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+      <path d="m8.93 6.588-2.29.287-.082.38 .45.083c.294.07.352.176.288.469 l-.738 3.468c-.194.897.105 1.319 .808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176 -.492.246-.686.246-.275 0-.375 -.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+    </svg>
+  </span>
+</div>
+{%- endmacro %}
+
+{% set permission_tooltips = {
+  'portal_admin': 'Acesso total ao sistema. Pode gerenciar usuarios, relatorios, dashboard, importacao e todas as configuracoes. Use apenas para administradores confiaveis.',
+  'portal_relatorios': 'Pode visualizar o catalogo de relatorios, executar relatorios, exportar resultados e gerenciar relatorios cadastrados. Nao acessa dashboard administrativo nem importacao.',
+  'portal_dashboard': 'Pode configurar fontes do dashboard, criar e editar widgets e visualizar o dashboard operacional. Nao acessa catalogo de relatorios nem importacao.',
+  'portal_importacao': 'Pode executar a importacao GLPI, gerenciar tabelas locais e visualizar logs de importacao. Nao acessa relatorios nem configuracoes de usuarios.',
+  'portal_usuarios': 'Pode gerenciar usuarios, grupos, categorias de relatorios e configuracao LDAP. Nao acessa relatorios, dashboard nem importacao.',
+  'portal_view': 'Acesso somente leitura. Visualiza relatorios e dashboard conforme as categorias permitidas. Nao pode criar, editar nem executar acoes administrativas.'
+} %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Usuarios e Grupos</h1>
+    <p>Acesso local para contas autenticadas pelo dominio.</p>
+  </div>
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<section class="panel form-panel">
+  <div class="panel-header">
+    <h2>Usuários locais</h2>
+  </div>
+  <form method="post" action="/admin/users-groups/local">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="row g-3 align-items-end">
+      <div class="col-lg-3">
+        <label class="form-label" for="local_username">Usuario</label>
+        <input class="form-control" id="local_username" name="username" autocomplete="off" required>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label" for="local_password">Senha</label>
+        <input class="form-control" id="local_password" name="password" type="password" minlength="8" required>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label" for="local_confirm_password">Confirmar senha</label>
+        <input class="form-control" id="local_confirm_password" name="confirm_password" type="password" minlength="8" required>
+      </div>
+      <div class="col-lg-3">
+        <button class="btn btn-primary w-100" type="submit">Cadastrar usuario local</button>
+      </div>
+      <div class="col-12">
+        <div class="d-flex flex-wrap gap-3 align-items-center">
+          {{ permission_checkbox('local_portal_admin', 'portal_admin', 'portal_admin', permission_tooltips.portal_admin) }}
+          {{ permission_checkbox('local_portal_relatorios', 'portal_relatorios', 'portal_relatorios', permission_tooltips.portal_relatorios) }}
+          {{ permission_checkbox('local_portal_dashboard', 'portal_dashboard', 'portal_dashboard', permission_tooltips.portal_dashboard) }}
+          {{ permission_checkbox('local_portal_importacao', 'portal_importacao', 'portal_importacao', permission_tooltips.portal_importacao) }}
+          {{ permission_checkbox('local_portal_usuarios', 'portal_usuarios', 'portal_usuarios', permission_tooltips.portal_usuarios) }}
+          {{ permission_checkbox('local_portal_view', 'portal_view', 'portal_view', permission_tooltips.portal_view, True) }}
+        </div>
+      </div>
+      <div class="col-lg-2">
+        <div class="form-check">
+          <input class="form-check-input" id="local_is_active" name="is_active" type="checkbox" checked>
+          <label class="form-check-label" for="local_is_active">Acesso ativo</label>
+        </div>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Categorias permitidas</label>
+        <div class="d-flex flex-wrap gap-3">
+          {% for category in categories %}
+          <div class="form-check">
+            <input class="form-check-input" id="local_category_{{ category.id }}" name="category_ids" value="{{ category.id }}" type="checkbox">
+            <label class="form-check-label" for="local_category_{{ category.id }}">{{ category.name }}</label>
+          </div>
+          {% else %}
+          <span class="muted">Nenhuma categoria ativa cadastrada.</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </form>
+</section>
+
+<section class="panel form-panel">
+  <div class="panel-header">
+    <h2>Cadastrar usuario de dominio</h2>
+  </div>
+  <form method="post" action="/admin/users-groups">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="row g-3 align-items-end">
+      <div class="col-lg-4">
+        <label class="form-label" for="username">Usuario</label>
+        <input class="form-control" id="username" name="username" autocomplete="off" required>
+      </div>
+      <div class="col-12">
+        <div class="d-flex flex-wrap gap-3 align-items-center">
+          {{ permission_checkbox('new_portal_admin', 'portal_admin', 'portal_admin', permission_tooltips.portal_admin) }}
+          {{ permission_checkbox('new_portal_relatorios', 'portal_relatorios', 'portal_relatorios', permission_tooltips.portal_relatorios) }}
+          {{ permission_checkbox('new_portal_dashboard', 'portal_dashboard', 'portal_dashboard', permission_tooltips.portal_dashboard) }}
+          {{ permission_checkbox('new_portal_importacao', 'portal_importacao', 'portal_importacao', permission_tooltips.portal_importacao) }}
+          {{ permission_checkbox('new_portal_usuarios', 'portal_usuarios', 'portal_usuarios', permission_tooltips.portal_usuarios) }}
+          {{ permission_checkbox('new_portal_view', 'portal_view', 'portal_view', permission_tooltips.portal_view, True) }}
+        </div>
+      </div>
+      <div class="col-lg-2">
+        <div class="form-check">
+          <input class="form-check-input" id="new_is_active" name="is_active" type="checkbox" checked>
+          <label class="form-check-label" for="new_is_active">Acesso ativo</label>
+        </div>
+      </div>
+      <div class="col-lg-2">
+        <button class="btn btn-primary w-100" type="submit">Cadastrar</button>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Categorias permitidas</label>
+        <div class="d-flex flex-wrap gap-3">
+          {% for category in categories %}
+          <div class="form-check">
+            <input class="form-check-input" id="new_category_{{ category.id }}" name="category_ids" value="{{ category.id }}" type="checkbox">
+            <label class="form-check-label" for="new_category_{{ category.id }}">{{ category.name }}</label>
+          </div>
+          {% else %}
+          <span class="muted">Nenhuma categoria ativa cadastrada.</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  {% for user in users %}
+  {% set is_last_local_admin = user.id == last_local_admin_id %}
+  {% set is_current_user = current_user and user.id == current_user.id %}
+  {% set delete_blocked_admin = user.id in delete_blocked_admin_ids %}
+  {% set active_disabled_title = 'Não é possível desativar o único administrador local' if is_last_local_admin else ('Você não pode desativar sua própria conta' if is_current_user else '') %}
+  {% set can_delete_user = (not user.is_active) and (not is_current_user) and (not is_last_local_admin) and (not delete_blocked_admin) %}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <strong>{{ user.username }}</strong>
+        <span class="badge bg-secondary ms-2">{{ 'Local' if user.is_local else 'Domínio' }}</span>
+      </div>
+      <small class="text-muted">Último login: {{ user.last_login_at|portal_dt }}</small>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/admin/users-groups/{{ user.id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if is_last_local_admin %}
+        <input name="portal_admin" type="hidden" value="on">
+        <input name="is_active" type="hidden" value="on">
+        {% endif %}
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold small text-uppercase text-muted">Perfis de acesso</label>
+          <div class="d-flex flex-wrap gap-3">
+            {{ permission_checkbox('user_' ~ user.id ~ '_portal_admin', 'portal_admin', 'portal_admin', permission_tooltips.portal_admin, user.is_admin, None, is_last_local_admin) }}
+            {{ permission_checkbox('user_' ~ user.id ~ '_portal_relatorios', 'portal_relatorios', 'portal_relatorios', permission_tooltips.portal_relatorios, user.portal_relatorios) }}
+            {{ permission_checkbox('user_' ~ user.id ~ '_portal_dashboard', 'portal_dashboard', 'portal_dashboard', permission_tooltips.portal_dashboard, user.portal_dashboard) }}
+            {{ permission_checkbox('user_' ~ user.id ~ '_portal_importacao', 'portal_importacao', 'portal_importacao', permission_tooltips.portal_importacao, user.portal_importacao) }}
+            {{ permission_checkbox('user_' ~ user.id ~ '_portal_usuarios', 'portal_usuarios', 'portal_usuarios', permission_tooltips.portal_usuarios, user.portal_usuarios) }}
+            {{ permission_checkbox('user_' ~ user.id ~ '_portal_view', 'portal_view', 'portal_view', permission_tooltips.portal_view, user.portal_view) }}
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold small text-uppercase text-muted">Categorias permitidas</label>
+          <div class="d-flex flex-wrap gap-3">
+            {% for category in categories %}
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" id="user_{{ user.id }}_category_{{ category.id }}" name="category_ids" value="{{ category.id }}" type="checkbox" {% if category in user.report_categories %}checked{% endif %}>
+              <label class="form-check-label small" for="user_{{ user.id }}_category_{{ category.id }}">{{ category.name }}</label>
+            </div>
+            {% else %}
+            <span class="muted">Nenhuma categoria ativa cadastrada.</span>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+          <div class="form-check">
+            {% if is_last_local_admin or is_current_user %}
+            <input name="is_active" type="hidden" value="{{ 'on' if user.is_active else '' }}">
+            {% endif %}
+            <input class="form-check-input" id="user_{{ user.id }}_is_active" name="is_active" type="checkbox" {% if user.is_active %}checked{% endif %} {% if is_last_local_admin or is_current_user %}disabled{% endif %}>
+            <label class="form-check-label" for="user_{{ user.id }}_is_active">Acesso ativo</label>
+            {% if active_disabled_title %}
+            <span tabindex="0" data-bs-toggle="tooltip" data-bs-placement="right" title="{{ active_disabled_title }}">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-info-circle ms-1 text-muted" viewBox="0 0 16 16">
+                <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                <path d="m8.93 6.588-2.29.287-.082.38 .45.083c.294.07.352.176.288.469 l-.738 3.468c-.194.897.105 1.319 .808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176 -.492.246-.686.246-.275 0-.375 -.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+              </svg>
+            </span>
+            {% endif %}
+          </div>
+          <button class="btn btn-sm" type="submit" style="background:#E6F1FB;border:0.5px solid #85B7EB;color:#185FA5">Salvar</button>
+          {% if user.is_local %}
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#senha-{{ user.id }}" aria-expanded="false" aria-controls="senha-{{ user.id }}">Alterar senha</button>
+          {% endif %}
+          {% if can_delete_user %}
+          <button class="btn btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#deleteUserModal{{ user.id }}" style="background:#FCEBEB;border:0.5px solid #F09595;color:#A32D2D">Excluir</button>
+          {% endif %}
+        </div>
+      </form>
+
+      {% if user.is_local %}
+      <div class="collapse mt-3" id="senha-{{ user.id }}">
+        <form method="post" action="/admin/users-groups/local/{{ user.id }}/password">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="row g-2">
+            <div class="col-md-4">
+              <input class="form-control form-control-sm" name="new_password" type="password" minlength="8" placeholder="Nova senha" required>
+            </div>
+            <div class="col-md-4">
+              <input class="form-control form-control-sm" name="confirm_password" type="password" minlength="8" placeholder="Confirmar senha" required>
+            </div>
+            <div class="col-auto">
+              <button class="btn btn-sm btn-warning" type="submit">Confirmar</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% if can_delete_user %}
+  <div class="modal fade" id="deleteUserModal{{ user.id }}" tabindex="-1" aria-labelledby="deleteUserModalLabel{{ user.id }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <form method="post" action="/admin/users-groups/{{ user.id }}/delete">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="deleteUserModalLabel{{ user.id }}">Confirmar exclusão</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p>Confirmar exclusão de '{{ user.username }}'?</p>
+            <p>Esta ação é permanente e não pode ser desfeita. O histórico de execuções será preservado.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn" style="background:#FCEBEB;border:0.5px solid #F09595;color:#A32D2D">Confirmar exclusão</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">Nenhum usuario cadastrado.</div>
+  {% endfor %}
+</section>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var tooltipEls = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+  tooltipEls.forEach(function(el) {
+    new bootstrap.Tooltip(el);
+  });
+});
+</script>
+{% endblock %}

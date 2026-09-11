@@ -1,0 +1,20 @@
+# Exemplo independente; não foi copiado da unidade real em /etc.
+# A aplicação carrega .env, local.env e ldap.env via python-dotenv.
+# Não duplicar .env em EnvironmentFile: as sintaxes de escape são diferentes.
+[Unit]
+Description=ArcReports - Portal de BI e Relatorios
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=ia-dev
+Group=ia-dev
+WorkingDirectory=/opt/sites/glpi-portal
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/sites/glpi-portal/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

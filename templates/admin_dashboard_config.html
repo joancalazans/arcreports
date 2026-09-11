@@ -1,0 +1,1100 @@
+{% extends "base.html" %}
+{% macro field_select(id, name, selected, selected_source_id, label) %}
+<div data-config-field="{{ name }}">
+  <label class="form-label" for="{{ id }}">{{ label }}</label>
+  <select class="form-select dashboard-field-select" id="{{ id }}" name="{{ name }}" data-selected-value="{{ selected or '' }}">
+    <option value="">Nao usar</option>
+  </select>
+</div>
+{% endmacro %}
+{% macro dashboard_category_checks(prefix, selected_categories) %}
+{% set selected_ids = selected_categories | map(attribute='id') | list %}
+<div class="dashboard-category-checks">
+  {% for category in categories %}
+  <label class="form-check">
+    <input class="form-check-input" type="checkbox" name="category_ids" value="{{ category.id }}" {% if category.id in selected_ids %}checked{% endif %}>
+    <span class="form-check-label">{{ category.name }}</span>
+  </label>
+  {% else %}
+  <span class="muted">Nenhuma categoria cadastrada.</span>
+  {% endfor %}
+</div>
+{% endmacro %}
+{% block content %}
+<style>
+  .widget-bulk-bar {
+    align-items: center;
+    background: var(--color-background-secondary);
+    border-radius: 8px;
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+  }
+  .widget-bulk-bar .form-select {
+    font-size: 12px;
+    min-width: 190px;
+  }
+  .widget-bulk-count {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    margin-left: auto;
+  }
+  .widget-bulk-apply:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+  .widget-bulk-apply:not(:disabled) {
+    cursor: pointer;
+    opacity: 1;
+  }
+  .dashboard-admin-list {
+    align-items: start;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .dashboard-widget-row {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 12px;
+    transition: opacity 0.2s ease, transform 0.2s ease, border-color 0.15s ease;
+  }
+  .dashboard-widget-row.is-selected,
+  .dashboard-widget-row.is-editing {
+    border: 1px solid #B5D4F4;
+    border-color: #B5D4F4;
+  }
+  .dashboard-widget-row.is-editing {
+    grid-column: 1 / -1;
+  }
+  .dashboard-widget-row.is-removing {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  [data-widget-delete-form] {
+    display: none;
+  }
+  .widget-card-view {
+    align-items: flex-start;
+    display: flex;
+    gap: 8px;
+  }
+  .widget-card-title {
+    color: var(--color-text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.3;
+  }
+  .widget-card-meta {
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    margin-top: 2px;
+  }
+  .widget-card-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+  .widget-edit-label {
+    align-items: center;
+    color: #185FA5;
+    display: flex;
+    font-size: 11px;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+  .widget-edit-grid,
+  .widget-edit-body .dashboard-widget-fields {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .widget-edit-body .form-control,
+  .widget-edit-body .form-select {
+    font-size: 12px;
+    min-width: 0;
+    width: 100%;
+  }
+  .widget-edit-body .form-label {
+    font-size: 11px;
+  }
+  .widget-edit-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+  @media (max-width: 1100px) {
+    .dashboard-admin-list {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .widget-edit-grid,
+    .widget-edit-body .dashboard-widget-fields {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 720px) {
+    .dashboard-admin-list,
+    .widget-edit-grid,
+    .widget-edit-body .dashboard-widget-fields {
+      grid-template-columns: 1fr;
+    }
+    .widget-bulk-bar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .widget-bulk-count {
+      margin-left: 0;
+    }
+  }
+  .dashboard-toast {
+    background: #185FA5;
+    border-radius: 8px;
+    bottom: 18px;
+    color: #fff;
+    font-size: 12px;
+    opacity: 0;
+    padding: 9px 12px;
+    pointer-events: none;
+    position: fixed;
+    right: 18px;
+    transform: translateY(8px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 1080;
+  }
+  .dashboard-toast.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+</style>
+<div class="page-header">
+  <div>
+    <h1>Config. Dashboard</h1>
+    <p>Gerencie dashboards e widgets a partir de Fontes Dashboard habilitadas.</p>
+  </div>
+  <a class="btn btn-outline-primary" href="/admin/dashboard-sources">Fontes Dashboard</a>
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<section class="panel dashboard-config-panel">
+  <div class="dashboard-tabs" style="display:flex;align-items:flex-end;gap:4px;border-bottom:0.5px solid var(--color-border-tertiary);margin:-0.5rem -0.5rem 1rem;padding:0 0.5rem;overflow-x:auto">
+    {% for dash in dashboards %}
+    <a class="dashboard-tab-link tab{% if current_dashboard and current_dashboard.id == dash.id %} active{% endif %}" data-dashboard-tab="{{ dash.id }}" data-dashboard-id="{{ dash.id }}" href="/admin/dashboard-config?dashboard_id={{ dash.id }}" style="display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:7px 12px;border:0.5px solid {% if current_dashboard and current_dashboard.id == dash.id %}var(--color-border-secondary){% else %}transparent{% endif %};border-bottom:0;background:{% if current_dashboard and current_dashboard.id == dash.id %}var(--color-background-primary){% else %}var(--color-background-secondary){% endif %};border-radius:7px 7px 0 0;color:{% if current_dashboard and current_dashboard.id == dash.id %}var(--color-text-primary){% else %}var(--color-text-secondary){% endif %};font-size:12px;text-decoration:none;white-space:nowrap">
+      <span>{{ dash.name }}</span>
+      <span style="font-size:10px;line-height:1;padding:3px 6px;border-radius:9px;background:{% if current_dashboard and current_dashboard.id == dash.id %}#E6F1FB{% else %}var(--color-background-primary){% endif %};color:{% if current_dashboard and current_dashboard.id == dash.id %}#185FA5{% else %}var(--color-text-tertiary){% endif %}">{{ dash.widgets|length }}</span>
+    </a>
+    {% endfor %}
+    <button class="btn btn-outline-primary btn-sm" type="button" title="Novo dashboard" data-bs-toggle="collapse" data-bs-target="#newDashboardForm" style="height:32px;width:34px;padding:0;margin-left:4px">+</button>
+  </div>
+  <div class="collapse mb-3" id="newDashboardForm">
+    <form class="dashboard-inline-form" method="post" action="/admin/dashboard-config/dashboards">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div>
+        <label class="form-label" for="dashboard-name-new">Nome</label>
+        <input class="form-control" id="dashboard-name-new" name="name" required>
+      </div>
+      <div>
+        <label class="form-label" for="dashboard-description-new">Descricao</label>
+        <input class="form-control" id="dashboard-description-new" name="description">
+      </div>
+      <div>
+        <label class="form-label" for="dashboard-order-new">Ordem</label>
+        <input class="form-control" id="dashboard-order-new" name="sort_order" type="number" min="0" max="10000" value="100">
+      </div>
+      <label class="form-check dashboard-active-check">
+        <input class="form-check-input" name="is_active" type="checkbox" checked>
+        <span class="form-check-label">Ativo</span>
+      </label>
+      <div class="dashboard-categories-field">
+        <label class="form-label">Categorias</label>
+        {{ dashboard_category_checks("new", []) }}
+      </div>
+      <div class="dashboard-inline-actions">
+        <button class="btn btn-primary" type="submit">Criar</button>
+      </div>
+    </form>
+  </div>
+
+  {% if current_dashboard %}
+  <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem">
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <h2 style="font-size:18px;margin:0;color:var(--color-text-primary)">{{ current_dashboard.name }}</h2>
+        {% if current_dashboard.is_active %}
+        <span style="font-size:10px;padding:2px 8px;background:#EAF3DE;color:#3B6D11;border-radius:10px">Ativo</span>
+        {% else %}
+        <span style="font-size:10px;padding:2px 8px;background:var(--color-background-secondary);color:var(--color-text-secondary);border-radius:10px">Inativo</span>
+        {% endif %}
+        <span style="font-size:10px;padding:2px 8px;background:var(--color-background-secondary);color:var(--color-text-secondary);border-radius:10px">{{ widgets|length }} widgets</span>
+      </div>
+      {% if current_dashboard.description %}
+      <p style="font-size:12px;color:var(--color-text-tertiary);margin:5px 0 0">{{ current_dashboard.description }}</p>
+      {% endif %}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+      <button type="button" data-bs-toggle="modal" data-bs-target="#editDashboardModal{{ current_dashboard.id }}" style="font-size:12px;padding:4px 10px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);cursor:pointer">Editar</button>
+      <form method="post" action="/admin/dashboard-config/dashboards/{{ current_dashboard.id }}/duplicate" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" style="font-size:12px;padding:4px 10px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);cursor:pointer">Duplicar</button>
+      </form>
+      <form method="post" action="/admin/dashboard-config/dashboards/{{ current_dashboard.id }}/delete" style="display:inline" data-dashboard-delete-form data-dashboard-id="{{ current_dashboard.id }}" data-dashboard-name="{{ current_dashboard.name|e }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" style="font-size:12px;padding:4px 10px;background:#FCEBEB;border:0.5px solid #F09595;border-radius:6px;color:#A32D2D;cursor:pointer">Excluir</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <div>
+    {% for dash in dashboards %}
+    <div class="modal fade" id="editDashboardModal{{ dash.id }}" tabindex="-1" aria-labelledby="editDashboardModalLabel{{ dash.id }}" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="/admin/dashboard-config/dashboards/{{ dash.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="modal-header">
+              <h2 class="modal-title fs-5" id="editDashboardModalLabel{{ dash.id }}">Editar dashboard</h2>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label" for="dashboard-name-{{ dash.id }}">Nome</label>
+                  <input class="form-control" id="dashboard-name-{{ dash.id }}" name="name" value="{{ dash.name }}" required>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dashboard-order-{{ dash.id }}">Ordem</label>
+                  <input class="form-control" id="dashboard-order-{{ dash.id }}" name="sort_order" type="number" min="0" max="10000" value="{{ dash.sort_order }}">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                  <label class="form-check dashboard-active-check">
+                    <input class="form-check-input" name="is_active" type="checkbox" {% if dash.is_active %}checked{% endif %}>
+                    <span class="form-check-label">Ativo</span>
+                  </label>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="dashboard-description-{{ dash.id }}">Descricao</label>
+                  <input class="form-control" id="dashboard-description-{{ dash.id }}" name="description" value="{{ dash.description or '' }}">
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Categorias</label>
+                  {{ dashboard_category_checks("dashboard-" ~ dash.id, dash.categories) }}
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">Nenhum dashboard cadastrado.</div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if current_dashboard %}
+<section class="panel form-panel dashboard-widget-form">
+  <div class="panel-header">
+    <h2>Novo widget em {{ current_dashboard.name }}</h2>
+  </div>
+  <form method="post" action="/admin/dashboard-config/widgets" data-widget-form data-new-widget-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="dashboard_id" value="{{ current_dashboard.id }}">
+    <div class="row g-3">
+      <div class="col-lg-5">
+        <label class="form-label" for="new-title">Titulo</label>
+        <input class="form-control" id="new-title" name="title" required>
+      </div>
+      <div class="col-lg-4">
+        <label class="form-label" for="new-source">Fonte Dashboard</label>
+        <select class="form-select dashboard-source-select" id="new-source" name="source_id" required>
+          <option value="">Selecione</option>
+          {% for source in sources %}
+          <option value="{{ source.id }}">{{ source.name }} - {{ source.source_table }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-lg-4" id="field-source-b-new" data-config-field="source_id_b" style="display:none">
+        <label class="form-label" for="new-source-b">Fonte B</label>
+        <select class="form-select" id="new-source-b" name="source_id_b">
+          <option value="">Não usar</option>
+          {% for source in sources %}
+          <option value="{{ source.id }}">{{ source.name }} - {{ source.source_table }}</option>
+          {% endfor %}
+        </select>
+        <small class="form-text text-muted">Para GAUGE: Fonte A = total, Fonte B = filtrado. Para COMPARATIVO: Fonte A = valor principal, Fonte B = valor de referência.</small>
+      </div>
+      <div class="col-lg-3" data-config-field="cor_secundaria" style="display:none">
+        <label class="form-label" for="new-cor-secundaria">Cor secundária</label>
+        <select class="form-select" id="new-cor-secundaria" name="cor_secundaria">
+          {% for item in colors %}<option value="{{ item }}" {% if item == 'red' %}selected{% endif %}>{{ item }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label" for="new-type">Tipo widget</label>
+        <select class="form-select dashboard-type-select" id="new-type" name="widget_type">
+          {% for item in widget_types %}
+          <option value="{{ item }}">{{ {'kpi': 'KPI', 'gauge': 'Gauge / Velocímetro', 'comparativo': 'Comparativo'}.get(item, item) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="dashboard-widget-fields">
+      {{ field_select("new-label", "label_field", "", none, "Campo label") }}
+      {{ field_select("new-value", "value_field", "", none, "Campo valor") }}
+      {{ field_select("new-series", "series_field", "", none, "Campo serie") }}
+      {{ field_select("new-time", "time_field", "", none, "Campo temporal") }}
+      <div>
+        <label class="form-label" for="new-aggregation">Agregacao</label>
+        <select class="form-select" id="new-aggregation" name="aggregation">
+          {% for item in aggregations %}<option value="{{ item }}">{{ item }}</option>{% endfor %}
+        </select>
+      </div>
+      <div data-config-field="top_n">
+        <label class="form-label" for="new-top-n">Top N</label>
+        <input class="form-control" id="new-top-n" name="top_n" type="number" min="1" max="100" value="10">
+      </div>
+      <div>
+        <label class="form-label" for="new-color">Cor</label>
+        <select class="form-select" id="new-color" name="color">
+          {% for item in colors %}<option value="{{ item }}">{{ item }}</option>{% endfor %}
+        </select>
+      </div>
+      <div data-config-field="icone">
+        <label class="form-label" for="new-icone">Ícone</label>
+        <select class="form-select" id="new-icone" name="icone">
+          <option value="">Sem ícone</option>
+          <option value="ti-ticket">Chamado</option>
+          <option value="ti-check">Fechado</option>
+          <option value="ti-clock">Pendente</option>
+          <option value="ti-alert-triangle">Crítico</option>
+          <option value="ti-users">Equipe</option>
+          <option value="ti-chart-bar">Volume</option>
+          <option value="ti-calendar">Período</option>
+          <option value="ti-trending-up">Crescimento</option>
+        </select>
+      </div>
+      <div data-config-field="comparar_com">
+        <label class="form-label" for="new-comparar-com">Comparar com</label>
+        <select class="form-select" id="new-comparar-com" name="comparar_com">
+          <option value="">Sem comparativo</option>
+          <option value="mes_anterior">Mês anterior</option>
+          <option value="ano_anterior">Mesmo período ano anterior</option>
+        </select>
+      </div>
+      <div data-config-field="meta_gauge">
+        <label class="form-label" for="new-meta-gauge">Meta (%)</label>
+        <input class="form-control" id="new-meta-gauge" name="meta_gauge" type="number" min="0" max="100" step="0.1" placeholder="Ex: 90">
+      </div>
+      <div>
+        <label class="form-label" for="new-order">Ordem</label>
+        <input class="form-control" id="new-order" name="sort_order" type="number" min="0" max="10000" value="100">
+      </div>
+      <div>
+        <label class="form-label" for="new-size">Tamanho</label>
+        <select class="form-select" id="new-size" name="size">
+          {% for item in sizes %}<option value="{{ item }}" {% if item == 'medio' %}selected{% endif %}>{{ item }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit" {% if not sources %}disabled{% endif %}>Salvar widget</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <h2>Widgets Configurados (<span id="widgetConfiguredCount">{{ widgets|length }}</span>)</h2>
+  </div>
+  <div class="widget-bulk-bar" id="bulkWidgetsForm">
+    <label class="form-check" style="margin:0">
+      <input class="form-check-input" type="checkbox" id="selectAllWidgets">
+      <span class="form-check-label">Selecionar todos</span>
+    </label>
+    <select class="form-select" id="bulk_action" name="bulk_action">
+      <option value="delete">Excluir selecionados</option>
+    </select>
+    <button class="btn btn-outline-primary widget-bulk-apply" id="bulkApplyButton" type="button" disabled>Aplicar</button>
+    <div class="widget-bulk-count"><span id="selectedCount">0</span> selecionados</div>
+  </div>
+  <div class="dashboard-admin-list" id="widgetGrid">
+    {% for widget in widgets %}
+    <form class="dashboard-widget-row" id="widget-card-{{ widget.id }}" method="post" action="/admin/dashboard-config/widgets/{{ widget.id }}" data-widget-form data-widget-id="{{ widget.id }}" data-order="{{ loop.index0 }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="dashboard_id" value="{{ current_dashboard.id }}">
+      <div class="widget-card-view">
+        <input class="form-check-input widget-checkbox" type="checkbox" name="widget_ids" value="{{ widget.id }}" aria-label="Selecionar {{ widget.title }}">
+        <div style="min-width:0">
+          <div class="widget-card-title">{{ widget.title }}</div>
+          <div class="widget-card-meta">{{ widget.widget_type }} · {{ widget.source.name }} · ordem {{ widget.sort_order }}</div>
+        </div>
+        <div class="widget-card-actions">
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-edit-widget="{{ widget.id }}">Editar</button>
+          <button class="btn btn-sm" type="submit" form="delete-widget-{{ widget.id }}" style="background:#FCEBEB;border:0.5px solid #F09595;color:#A32D2D">Excluir</button>
+        </div>
+      </div>
+      <div class="widget-edit-body" id="widget-edit-body-{{ widget.id }}" hidden style="margin-top:10px">
+      <div class="widget-edit-label"><i class="ti ti-edit" aria-hidden="true"></i> Editando: {{ widget.title }}</div>
+      <div class="widget-edit-grid">
+        <div>
+          <label class="form-label" for="widget-title-{{ widget.id }}">Titulo</label>
+          <input class="form-control" id="widget-title-{{ widget.id }}" name="title" value="{{ widget.title }}" required>
+        </div>
+        <div>
+          <label class="form-label" for="widget-source-{{ widget.id }}">Fonte Dashboard</label>
+          <select class="form-select dashboard-source-select" id="widget-source-{{ widget.id }}" name="source_id" required>
+            {% for source in sources %}
+            <option value="{{ source.id }}" {% if widget.source_id == source.id %}selected{% endif %}>{{ source.name }} - {{ source.source_table }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div id="field-source-b-{{ widget.id }}" data-config-field="source_id_b" style="display:none">
+          <label class="form-label" for="widget-source-b-{{ widget.id }}">Fonte B</label>
+          <select class="form-select" id="widget-source-b-{{ widget.id }}" name="source_id_b">
+            <option value="">Não usar</option>
+            {% for source in sources %}
+            <option value="{{ source.id }}" {% if widget.source_id_b == source.id %}selected{% endif %}>{{ source.name }} - {{ source.source_table }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div data-config-field="cor_secundaria" style="display:none">
+          <label class="form-label" for="widget-cor-secundaria-{{ widget.id }}">Cor secundária</label>
+          <select class="form-select" id="widget-cor-secundaria-{{ widget.id }}" name="cor_secundaria">
+            {% for item in colors %}<option value="{{ item }}" {% if (widget.cor_secundaria or 'red') == item %}selected{% endif %}>{{ item }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="widget-type-{{ widget.id }}">Tipo widget</label>
+          <select class="form-select dashboard-type-select" id="widget-type-{{ widget.id }}" name="widget_type">
+            {% for item in widget_types %}
+            <option value="{{ item }}" {% if widget.widget_type == item %}selected{% endif %}>{{ {'kpi': 'KPI', 'gauge': 'Gauge / Velocímetro', 'comparativo': 'Comparativo'}.get(item, item) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="dashboard-widget-fields">
+        {{ field_select("widget-label-" ~ widget.id, "label_field", widget.label_field, widget.source_id, "Campo label") }}
+        {{ field_select("widget-value-" ~ widget.id, "value_field", widget.value_field, widget.source_id, "Campo valor") }}
+        {{ field_select("widget-series-" ~ widget.id, "series_field", widget.series_field, widget.source_id, "Campo serie") }}
+        {{ field_select("widget-time-" ~ widget.id, "time_field", widget.time_field, widget.source_id, "Campo temporal") }}
+        <div>
+          <label class="form-label" for="widget-aggregation-{{ widget.id }}">Agregacao</label>
+          <select class="form-select" id="widget-aggregation-{{ widget.id }}" name="aggregation">
+            {% for item in aggregations %}<option value="{{ item }}" {% if widget.aggregation == item %}selected{% endif %}>{{ item }}</option>{% endfor %}
+          </select>
+        </div>
+        <div data-config-field="top_n">
+          <label class="form-label" for="widget-top-n-{{ widget.id }}">Top N</label>
+          <input class="form-control" id="widget-top-n-{{ widget.id }}" name="top_n" type="number" min="1" max="100" value="{{ widget.top_n }}">
+        </div>
+        <div>
+          <label class="form-label" for="widget-color-{{ widget.id }}">Cor</label>
+          <select class="form-select" id="widget-color-{{ widget.id }}" name="color">
+            {% for item in colors %}<option value="{{ item }}" {% if widget.color == item %}selected{% endif %}>{{ item }}</option>{% endfor %}
+          </select>
+        </div>
+        <div data-config-field="icone">
+          <label class="form-label" for="widget-icone-{{ widget.id }}">Ícone</label>
+          <select class="form-select" id="widget-icone-{{ widget.id }}" name="icone">
+            <option value="">Sem ícone</option>
+            <option value="ti-ticket" {% if widget.icone == 'ti-ticket' %}selected{% endif %}>Chamado</option>
+            <option value="ti-check" {% if widget.icone == 'ti-check' %}selected{% endif %}>Fechado</option>
+            <option value="ti-clock" {% if widget.icone == 'ti-clock' %}selected{% endif %}>Pendente</option>
+            <option value="ti-alert-triangle" {% if widget.icone == 'ti-alert-triangle' %}selected{% endif %}>Crítico</option>
+            <option value="ti-users" {% if widget.icone == 'ti-users' %}selected{% endif %}>Equipe</option>
+            <option value="ti-chart-bar" {% if widget.icone == 'ti-chart-bar' %}selected{% endif %}>Volume</option>
+            <option value="ti-calendar" {% if widget.icone == 'ti-calendar' %}selected{% endif %}>Período</option>
+            <option value="ti-trending-up" {% if widget.icone == 'ti-trending-up' %}selected{% endif %}>Crescimento</option>
+          </select>
+        </div>
+        <div data-config-field="comparar_com">
+          <label class="form-label" for="widget-comparar-com-{{ widget.id }}">Comparar com</label>
+          <select class="form-select" id="widget-comparar-com-{{ widget.id }}" name="comparar_com">
+            <option value="">Sem comparativo</option>
+            <option value="mes_anterior" {% if widget.comparar_com == 'mes_anterior' %}selected{% endif %}>Mês anterior</option>
+            <option value="ano_anterior" {% if widget.comparar_com == 'ano_anterior' %}selected{% endif %}>Mesmo período ano anterior</option>
+          </select>
+        </div>
+        <div data-config-field="meta_gauge">
+          <label class="form-label" for="widget-meta-gauge-{{ widget.id }}">Meta (%)</label>
+          <input class="form-control" id="widget-meta-gauge-{{ widget.id }}" name="meta_gauge" type="number" min="0" max="100" step="0.1" placeholder="Ex: 90" value="{{ widget.meta_gauge or '' }}">
+        </div>
+        <div>
+          <label class="form-label" for="widget-order-{{ widget.id }}">Ordem</label>
+          <input class="form-control" id="widget-order-{{ widget.id }}" name="sort_order" type="number" min="0" max="10000" value="{{ widget.sort_order }}">
+        </div>
+        <div>
+          <label class="form-label" for="widget-size-{{ widget.id }}">Tamanho</label>
+          <select class="form-select" id="widget-size-{{ widget.id }}" name="size">
+            {% for item in sizes %}<option value="{{ item }}" {% if widget.size == item %}selected{% endif %}>{{ item }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="widget-edit-actions">
+        <button class="btn btn-outline-secondary" type="button" data-cancel-widget="{{ widget.id }}">Cancelar</button>
+        <button class="btn btn-primary" type="submit">Salvar widget</button>
+      </div>
+      </div>
+    </form>
+    <form id="delete-widget-{{ widget.id }}" method="post" action="/admin/dashboard-config/widgets/{{ widget.id }}/delete" data-widget-delete-form data-widget-id="{{ widget.id }}" data-widget-title="{{ widget.title|e }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    </form>
+    {% else %}
+    <div class="empty-state">Nenhum widget configurado neste dashboard.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<div class="modal fade" id="deleteDependencyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="deleteDependencyTitle">Confirmar exclusao</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="deleteDependencyBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-outline-danger" id="deleteDependencyConfirm">Excluir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "{{ csrf_token }}";
+  const currentDashboardId = "{{ current_dashboard.id if current_dashboard else '' }}";
+  const sourceColumnsMap = {{ source_columns | tojson }};
+  let widgetGrid = document.getElementById("widgetGrid");
+  const widgetConfiguredCount = document.getElementById("widgetConfiguredCount");
+  let toastTimer = null;
+  const dashboardTabStorageKey = "activeDashboardTab";
+  const legacyDashboardTabStorageKey = "dashboardConfigActiveTab";
+  const urlParams = new URLSearchParams(window.location.search);
+
+  function getActiveDashboardId() {
+    return document.querySelector(".tab.active")?.dataset.dashboardId || currentDashboardId;
+  }
+
+  function storeActiveDashboardTab(dashboardId) {
+    if (!dashboardId) return;
+    sessionStorage.setItem(dashboardTabStorageKey, dashboardId);
+    sessionStorage.setItem(legacyDashboardTabStorageKey, dashboardId);
+  }
+
+  function reactivateDashboardTab(dashboardId) {
+    if (!dashboardId) return;
+    storeActiveDashboardTab(dashboardId);
+    const tab = Array.from(document.querySelectorAll(".tab[data-dashboard-id]"))
+      .find((item) => item.dataset.dashboardId === String(dashboardId));
+    if (tab && dashboardId !== currentDashboardId) tab.click();
+  }
+
+  const requestedDashboardId = urlParams.get("dashboard_id") || urlParams.get("active_tab");
+  const savedDashboardId = sessionStorage.getItem(dashboardTabStorageKey) || sessionStorage.getItem(legacyDashboardTabStorageKey);
+  if (!urlParams.has("dashboard_id") && (requestedDashboardId || savedDashboardId) && (requestedDashboardId || savedDashboardId) !== currentDashboardId) {
+    window.location.replace("/admin/dashboard-config?dashboard_id=" + encodeURIComponent(requestedDashboardId || savedDashboardId));
+  } else if (currentDashboardId) {
+    storeActiveDashboardTab(currentDashboardId);
+  }
+  document.querySelectorAll("[data-dashboard-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => storeActiveDashboardTab(tab.dataset.dashboardId || tab.dataset.dashboardTab));
+  });
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, function(char) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"}[char];
+    });
+  }
+
+  function restoreScroll(savedScrollY) {
+    requestAnimationFrame(() => window.scrollTo(0, savedScrollY));
+  }
+
+  function showDashboardToast(message) {
+    let toast = document.getElementById("dashboardToast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "dashboardToast";
+      toast.className = "dashboard-toast";
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add("is-visible");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("is-visible"), 2400);
+  }
+
+  function showError(message) {
+    alert(message || "Erro ao processar requisicao.");
+  }
+
+  function formUrlEncoded(form) {
+    return new URLSearchParams(new FormData(form));
+  }
+
+  function ajaxFormOptions(form) {
+    return {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-CSRF-Token": csrfToken,
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json"
+      },
+      body: formUrlEncoded(form)
+    };
+  }
+
+  function parseJsonResponse(response) {
+    return response.json().catch(() => {
+      throw new Error("Resposta invalida do servidor.");
+    });
+  }
+
+  function widgetCards() {
+    return Array.from(document.querySelectorAll(".dashboard-widget-row[data-widget-id]"));
+  }
+
+  function updateWidgetCount() {
+    if (widgetConfiguredCount) widgetConfiguredCount.textContent = widgetCards().length;
+  }
+
+  function reorderWidgetGrid() {
+    if (!widgetGrid) return;
+    widgetCards()
+      .sort((a, b) => Number(a.dataset.order || 0) - Number(b.dataset.order || 0))
+      .forEach((card) => widgetGrid.appendChild(card));
+  }
+
+  function removeWidgetCard(widgetId) {
+    const card = document.getElementById("widget-card-" + widgetId);
+    if (card) {
+      card.classList.add("is-removing");
+      setTimeout(() => {
+        card.remove();
+        updateWidgetCount();
+        updateBulkState();
+        if (widgetCards().length === 0 && widgetGrid && !widgetGrid.querySelector(".empty-state")) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.textContent = "Nenhum widget configurado neste dashboard.";
+          widgetGrid.appendChild(empty);
+        }
+      }, 200);
+    }
+    document.getElementById("delete-widget-" + widgetId)?.remove();
+  }
+
+  function closeWidgetEditor(card, reset = true) {
+    if (!card) return;
+    const savedScrollY = window.scrollY;
+    const body = card.querySelector(".widget-edit-body");
+    if (body) body.hidden = true;
+    card.classList.remove("is-editing");
+    if (reset) card.reset();
+    reorderWidgetGrid();
+    restoreScroll(savedScrollY);
+  }
+
+  function openWidgetEditor(widgetId) {
+    document.querySelectorAll(".dashboard-widget-row.is-editing").forEach((card) => {
+      if (card.dataset.widgetId !== String(widgetId)) closeWidgetEditor(card);
+    });
+    const card = document.getElementById("widget-card-" + widgetId);
+    const body = document.getElementById("widget-edit-body-" + widgetId);
+    if (!card || !body) return;
+    initDashboardWidgetForms(card);
+    card.classList.add("is-editing");
+    body.hidden = false;
+    widgetGrid?.prepend(card);
+  }
+
+  document.querySelectorAll("[data-edit-widget]").forEach((button) => {
+    button.addEventListener("click", () => openWidgetEditor(button.dataset.editWidget));
+  });
+
+  document.querySelectorAll("[data-cancel-widget]").forEach((button) => {
+    button.addEventListener("click", () => closeWidgetEditor(document.getElementById("widget-card-" + button.dataset.cancelWidget)));
+  });
+
+  const deleteModalEl = document.getElementById("deleteDependencyModal");
+  const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl) : null;
+  const deleteTitle = document.getElementById("deleteDependencyTitle");
+  const deleteBody = document.getElementById("deleteDependencyBody");
+  const deleteConfirm = document.getElementById("deleteDependencyConfirm");
+  let pendingDelete = null;
+
+  function submitDeleteForm(form, cascade) {
+    if (cascade) form.action += form.action.includes("?") ? "&cascade=1" : "?cascade=1";
+    form.submit();
+  }
+
+  document.querySelectorAll("[data-dashboard-delete-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      fetch("/admin/dashboard-config/dashboards/" + form.dataset.dashboardId + "/dependencies")
+        .then(parseJsonResponse)
+        .then((data) => {
+          if (!data.success) {
+            showError(data.error || "Nao foi possivel verificar dependencias.");
+            return;
+          }
+          pendingDelete = {type: "dashboard", form: form, cascade: data.has_dependencies};
+          deleteTitle.textContent = data.has_dependencies ? "Exclusao com dependencias" : "Confirmar exclusao";
+          if (data.has_dependencies) {
+            const rows = data.widgets.map((widget) => "<li>" + escapeHtml(widget.title) + "</li>").join("");
+            deleteBody.innerHTML = "<p><strong>O dashboard '" + escapeHtml(form.dataset.dashboardName) + "' possui " + data.widget_count + " widgets vinculados.</strong></p><ul>" + rows + "</ul><p>Escolha uma opcao.</p>";
+            deleteConfirm.textContent = "Excluir dashboard e widgets vinculados";
+          } else {
+            deleteBody.innerHTML = "<p>Confirmar exclusao de '" + escapeHtml(form.dataset.dashboardName) + "'?</p><p>Este dashboard nao possui widgets vinculados.</p>";
+            deleteConfirm.textContent = "Excluir";
+          }
+          deleteModal.show();
+        })
+        .catch((err) => {
+          showError("Erro ao verificar dependencias.");
+          console.error(err);
+        });
+    });
+  });
+
+  document.querySelectorAll("[data-widget-delete-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      pendingDelete = {type: "widget", form: form, cascade: false, widgetId: form.dataset.widgetId};
+      deleteTitle.textContent = "Confirmar exclusao";
+      deleteBody.innerHTML = "<p>Confirmar exclusao de '" + escapeHtml(form.dataset.widgetTitle) + "'?</p><p>Este widget nao possui referencias dependentes no portal.</p>";
+      deleteConfirm.textContent = "Excluir";
+      deleteModal.show();
+    });
+  });
+
+  deleteConfirm?.addEventListener("click", () => {
+    if (!pendingDelete) return;
+    if (pendingDelete.type === "dashboard") {
+      if (pendingDelete.cascade && !confirm("Confirmar exclusao em cascata? Serao excluidos permanentemente o dashboard e os widgets vinculados. Esta acao nao pode ser desfeita.")) return;
+      submitDeleteForm(pendingDelete.form, pendingDelete.cascade);
+      return;
+    }
+    if (pendingDelete.type === "bulk-widgets") {
+      const savedScrollY = window.scrollY;
+      const activeDashboardId = getActiveDashboardId();
+      fetch("/dashboard/widgets/bulk-delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
+        body: JSON.stringify({widget_ids: pendingDelete.widgetIds})
+      })
+        .then(parseJsonResponse)
+        .then((data) => {
+          if (data.errors?.length) showError(data.errors.join("\n"));
+          pendingDelete.widgetIds.forEach((widgetId) => removeWidgetCard(widgetId));
+          deleteModal.hide();
+          pendingDelete = null;
+          if (selectAllWidgets) {
+            selectAllWidgets.checked = false;
+            selectAllWidgets.indeterminate = false;
+          }
+          setTimeout(() => {
+            initWidgetBulkActions();
+            updateBulkState();
+            updateWidgetCount();
+            restoreScroll(savedScrollY);
+            reactivateDashboardTab(activeDashboardId);
+          }, 220);
+          showDashboardToast("Widgets excluidos.");
+        })
+        .catch((err) => {
+          showError("Erro ao processar requisicao.");
+          console.error(err);
+        });
+      return;
+    }
+    const savedScrollY = window.scrollY;
+    const activeDashboardId = getActiveDashboardId();
+    fetch(pendingDelete.form.action, ajaxFormOptions(pendingDelete.form))
+      .then(parseJsonResponse)
+      .then((data) => {
+        if (!data.success) {
+          showError(data.error || "Nao foi possivel excluir o widget.");
+          return;
+        }
+        removeWidgetCard(pendingDelete.widgetId);
+        deleteModal.hide();
+        pendingDelete = null;
+        setTimeout(() => {
+          initWidgetBulkActions();
+          updateBulkState();
+          updateWidgetCount();
+          restoreScroll(savedScrollY);
+          reactivateDashboardTab(activeDashboardId);
+        }, 220);
+        showDashboardToast(data.message || "Widget excluido.");
+      })
+      .catch((err) => {
+        showError("Erro ao processar requisicao.");
+        console.error(err);
+      });
+  });
+
+  document.querySelector("[data-new-widget-form]")?.addEventListener("submit", function(event) {
+    event.preventDefault();
+    const form = this;
+    const savedScrollY = window.scrollY;
+    const activeDashboardId = getActiveDashboardId();
+    fetch(form.action, ajaxFormOptions(form))
+      .then(parseJsonResponse)
+      .then((data) => {
+        if (!data.success) {
+          showError(data.error || "Nao foi possivel salvar o widget.");
+          return;
+        }
+        const list = document.querySelector(".dashboard-admin-list");
+        const empty = list?.querySelector(".empty-state");
+        if (empty) empty.remove();
+        const card = document.createElement("div");
+        card.id = "widget-card-" + data.widget.id;
+        card.className = "dashboard-widget-row";
+        card.dataset.widgetId = data.widget.id;
+        card.dataset.order = String(widgetCards().length);
+        card.style.opacity = "0";
+        card.style.transform = "translateY(4px)";
+        card.innerHTML =
+          '<div class="widget-card-view">' +
+          '<input class="form-check-input widget-checkbox" type="checkbox" name="widget_ids" value="' + data.widget.id + '" aria-label="Selecionar ' + escapeHtml(data.widget.title) + '">' +
+          '<div style="min-width:0"><div class="widget-card-title">' + escapeHtml(data.widget.title) + '</div>' +
+          '<div class="widget-card-meta">' + escapeHtml(data.widget.widget_type) + ' · ' + escapeHtml(data.widget.source) + ' · ordem ' + data.widget.sort_order + '</div></div>' +
+          '<div class="widget-card-actions"><span class="result-meta">Recarregue para editar</span></div></div>';
+        list?.prepend(card);
+        requestAnimationFrame(() => {
+          card.style.opacity = "1";
+          card.style.transform = "translateY(0)";
+        });
+        form.reset();
+        updateWidgetCount();
+        initWidgetBulkActions();
+        updateBulkState();
+        restoreScroll(savedScrollY);
+        reactivateDashboardTab(activeDashboardId);
+        showDashboardToast("Widget salvo.");
+      })
+      .catch((err) => {
+        showError("Erro ao processar requisicao.");
+        console.error(err);
+      });
+  });
+
+  function normalizeWidgetType(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function columnsForSource(sourceId) {
+    return sourceColumnsMap[String(sourceId)] || sourceColumnsMap[sourceId] || [];
+  }
+
+  function syncDashboardSourceFields(form) {
+    const source = form.querySelector(".dashboard-source-select");
+    const sourceId = source ? source.value : "";
+    form.querySelectorAll(".dashboard-field-select").forEach((field) => {
+      const selectedValue = field.value || field.dataset.selectedValue || "";
+      const nextOptions = [new Option("Nao usar", "")];
+      columnsForSource(sourceId).forEach((column) => {
+        const columnName = typeof column === "string" ? column : column.name;
+        if (!columnName || nextOptions.some((option) => option.value === columnName)) return;
+        nextOptions.push(new Option(columnName, columnName));
+      });
+      field.replaceChildren(...nextOptions);
+      field.value = nextOptions.some((option) => option.value === selectedValue) ? selectedValue : "";
+      field.dataset.selectedValue = field.value;
+    });
+  }
+
+  function syncDashboardTypeFields(form) {
+    const type = form.querySelector(".dashboard-type-select");
+    const tipoValue = normalizeWidgetType(type ? type.value : "");
+    console.log("tipo selecionado:", tipoValue);
+    const widgetType = tipoValue;
+    const compactFieldsHidden = widgetType === "kpi" || widgetType === "gauge";
+    const showIcon = widgetType === "kpi" || widgetType === "comparativo";
+    const showCompare = widgetType === "kpi" || widgetType === "comparativo";
+    const showGaugeMeta = widgetType === "gauge";
+    const showSourceB = widgetType === "gauge" || widgetType === "comparativo";
+    form.querySelectorAll("[data-config-field='label_field'], [data-config-field='series_field'], [data-config-field='top_n']").forEach((field) => field.hidden = compactFieldsHidden);
+    form.querySelectorAll("[data-config-field='icone']").forEach((field) => field.hidden = !showIcon);
+    form.querySelectorAll("[data-config-field='comparar_com']").forEach((field) => field.hidden = !showCompare);
+    form.querySelectorAll("[data-config-field='meta_gauge']").forEach((field) => field.hidden = !showGaugeMeta);
+    form.querySelectorAll("[data-config-field='source_id_b'], [data-config-field='cor_secundaria']").forEach((field) => {
+      field.hidden = !showSourceB;
+      field.style.display = showSourceB ? "" : "none";
+      const select = field.querySelector("select");
+      if (showSourceB && select?.name === "cor_secundaria" && !select.value) select.value = "red";
+      if (!showSourceB && select) select.value = "";
+    });
+  }
+
+  function initDashboardWidgetForms(root = document) {
+    const forms = [
+      ...(root.matches?.("[data-widget-form]") ? [root] : []),
+      ...root.querySelectorAll("[data-widget-form]")
+    ];
+    forms.forEach((form) => {
+      if (form.dataset.widgetFormInitialized === "1") return;
+      form.dataset.widgetFormInitialized = "1";
+      syncDashboardSourceFields(form);
+      syncDashboardTypeFields(form);
+      if (!form.matches("[data-new-widget-form]")) {
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const savedScrollY = window.scrollY;
+          const activeDashboardId = getActiveDashboardId();
+          fetch(form.action, ajaxFormOptions(form))
+            .then(parseJsonResponse)
+            .then((data) => {
+              if (!data.success) {
+                showError(data.error || "Nao foi possivel salvar o widget.");
+                return;
+              }
+              const title = form.querySelector(".widget-card-title");
+              const meta = form.querySelector(".widget-card-meta");
+              if (title) title.textContent = data.widget.title;
+              if (meta) meta.textContent = data.widget.widget_type + " · " + data.widget.source + " · ordem " + data.widget.sort_order;
+              closeWidgetEditor(form, false);
+              initWidgetBulkActions();
+              restoreScroll(savedScrollY);
+              reactivateDashboardTab(activeDashboardId);
+              showDashboardToast("Widget salvo.");
+            })
+            .catch((err) => {
+              showError("Erro ao processar requisicao.");
+              console.error(err);
+            });
+          });
+      }
+    });
+  }
+
+  document.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!target.matches?.(".dashboard-source-select, .dashboard-type-select")) return;
+    const form = target.closest("[data-widget-form]");
+    if (!form) return;
+    initDashboardWidgetForms(form);
+    if (target.matches(".dashboard-source-select")) syncDashboardSourceFields(form);
+    if (target.matches(".dashboard-type-select")) syncDashboardTypeFields(form);
+    if (target.matches(".dashboard-field-select")) target.dataset.selectedValue = target.value;
+  });
+
+  initDashboardWidgetForms();
+  const widgetFormObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        if (node.matches?.("[data-widget-form]")) {
+          initDashboardWidgetForms(node.parentElement || document);
+          return;
+        }
+        if (node.querySelector?.("[data-widget-form]")) initDashboardWidgetForms(node);
+      });
+    });
+  });
+  widgetFormObserver.observe(document.body, {childList: true, subtree: true});
+  window.initDashboardWidgetForms = initDashboardWidgetForms;
+
+  let bulkAction = document.getElementById("bulk_action");
+  let bulkApplyButton = document.getElementById("bulkApplyButton");
+  let selectedCount = document.getElementById("selectedCount");
+  let selectAllWidgets = document.getElementById("selectAllWidgets");
+  const widgetCheckboxes = () => Array.from(widgetGrid?.querySelectorAll(".widget-checkbox") || []);
+  const selectedWidgetIds = () => widgetCheckboxes().filter((item) => item.checked).map((item) => Number(item.value));
+  let updateBulkState = () => {};
+
+  function syncBulkState() {
+    const all = widgetCheckboxes();
+    const selected = all.filter((item) => item.checked);
+    if (selectedCount) selectedCount.textContent = selected.length;
+    if (bulkApplyButton) {
+      bulkApplyButton.disabled = selected.length === 0;
+      bulkApplyButton.style.opacity = selected.length === 0 ? "0.4" : "1";
+      bulkApplyButton.style.cursor = selected.length === 0 ? "not-allowed" : "pointer";
+    }
+    all.forEach((item) => {
+      document.getElementById("widget-card-" + item.value)?.classList.toggle("is-selected", item.checked);
+    });
+    if (selectAllWidgets) {
+      selectAllWidgets.checked = all.length > 0 && selected.length === all.length;
+      selectAllWidgets.indeterminate = selected.length > 0 && selected.length < all.length;
+    }
+  }
+
+  function initWidgetBulkActions() {
+    widgetGrid = document.getElementById("widgetGrid");
+    bulkAction = document.getElementById("bulk_action");
+    bulkApplyButton = document.getElementById("bulkApplyButton");
+    selectedCount = document.getElementById("selectedCount");
+    selectAllWidgets = document.getElementById("selectAllWidgets");
+    updateBulkState = syncBulkState;
+    if (selectAllWidgets && !selectAllWidgets.dataset.bulkListenerBound) {
+      selectAllWidgets.dataset.bulkListenerBound = "1";
+      selectAllWidgets.addEventListener("change", () => {
+        const checked = selectAllWidgets.checked;
+        widgetCheckboxes().forEach((item) => {
+          item.checked = checked;
+          item.dispatchEvent(new Event("change", {bubbles: true}));
+        });
+        updateBulkState();
+      });
+    }
+    if (widgetGrid && !widgetGrid.dataset.bulkListenerBound) {
+      widgetGrid.dataset.bulkListenerBound = "1";
+      widgetGrid.addEventListener("change", (event) => {
+        if (event.target.matches(".widget-checkbox")) updateBulkState();
+      });
+    }
+    if (bulkApplyButton && !bulkApplyButton.dataset.bulkListenerBound) {
+      bulkApplyButton.dataset.bulkListenerBound = "1";
+      bulkApplyButton.addEventListener("click", () => {
+        const ids = selectedWidgetIds();
+        if (!ids.length) return;
+        if (bulkAction?.value !== "delete") {
+          alert("Selecione uma acao valida.");
+          return;
+        }
+        pendingDelete = {type: "bulk-widgets", widgetIds: ids};
+        deleteTitle.textContent = "Confirmar exclusao";
+        deleteBody.innerHTML =
+          "<p>Confirmar exclusao de " + ids.length + " widgets?</p>" +
+          "<p>Esta acao nao pode ser desfeita.</p>";
+        deleteConfirm.textContent = "Confirmar exclusao";
+        deleteModal.show();
+      });
+    }
+    updateBulkState();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initWidgetBulkActions);
+  } else {
+    initWidgetBulkActions();
+  }
+  window.initWidgetBulkActions = initWidgetBulkActions;
+  updateBulkState();
+});
+</script>
+{% endblock %}

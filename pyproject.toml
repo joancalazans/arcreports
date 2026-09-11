@@ -1,0 +1,38 @@
+[project]
+name = "arcreports"
+version = "0.1.0"
+description = "Plataforma agnóstica de replicação e análise de dados para BI"
+license = {text = "AGPL-3.0"}
+requires-python = ">=3.9"
+authors = [
+  {name = "ArcData MSP"}
+]
+keywords = [
+  "bi",
+  "reports",
+  "glpi",
+  "zabbix",
+  "redmine",
+  "dashboard",
+  "etl"
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Programming Language :: Python :: 3.9",
+  "Framework :: FastAPI",
+]
+dependencies = [
+  "alembic>=1.13",
+]
+
+[project.urls]
+Homepage = "https://github.com/arcdata/arcreports"
+Repository = "https://github.com/arcdata/arcreports"
+
+[project.scripts]
+arcreports = "arcreports.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"

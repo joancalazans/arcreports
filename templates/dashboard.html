@@ -1,0 +1,656 @@
+{% extends "base.html" %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/tabler-icons/3.35.0/tabler-icons.min.css') }}">
+<script src="{{ url_for('static', path='vendor/chartjs/4.4.9/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/html2canvas/1.4.1/html2canvas.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/jspdf/2.5.1/jspdf.umd.min.js') }}"></script>
+{% endblock %}
+{% block content %}
+<div class="page-header dashboard-builder-header">
+  <div>
+    <h1>{{ dashboard.name if dashboard else 'Dashboard' }}</h1>
+    <p>{{ dashboard.description if dashboard and dashboard.description else 'Widgets consolidados a partir de fontes locais habilitadas.' }}</p>
+  </div>
+  {% if current_user and current_user.is_admin %}
+  <a class="btn btn-outline-primary" href="/admin/dashboard-config">Config. Dashboard</a>
+  {% endif %}
+</div>
+
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<form method="get" action="{{ '/dashboard/' ~ dashboard.id if dashboard else '/dashboard' }}" style="display:flex; align-items:center; gap:12px; padding:8px 0; margin-bottom:1rem; border-bottom:0.5px solid var(--color-border-tertiary)">
+  <span style="font-size:12px; color:var(--color-text-tertiary)">Período</span>
+  <input type="date" name="data_inicio" value="{{ filters.date_from }}" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
+  <span style="font-size:12px; color:var(--color-text-tertiary)">até</span>
+  <input type="date" name="data_fim" value="{{ filters.date_to }}" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
+  <button type="submit" style="font-size:12px; padding:4px 12px; background:transparent; border:0.5px solid var(--color-border-secondary); border-radius:6px; color:var(--color-text-secondary); cursor:pointer">Aplicar</button>
+  <a href="{{ '/dashboard/' ~ dashboard.id if dashboard else '/dashboard' }}" style="font-size:12px; padding:4px 12px; background:transparent; border:0.5px solid var(--color-border-secondary); border-radius:6px; color:var(--color-text-secondary); text-decoration:none; cursor:pointer">Limpar filtro</a>
+  <div style="margin-left:auto">
+    <button id="btn-export-pdf" type="button" style="font-size:12px; padding:4px 12px; background:transparent; border:0.5px solid var(--color-border-secondary); border-radius:6px; color:var(--color-text-secondary); cursor:pointer">Exportar PDF</button>
+  </div>
+</form>
+
+<section class="dashboard-widget-section" aria-label="Widgets graficos">
+  <div id="widgets-container" class="row">
+    {% for widget_data in widgets %}
+    {% set item = widget_data %}
+    {% set widget = item.widget %}
+    {% set size_class = {'pequeno': 'col-12 col-md-6 col-lg-3', 'medio': 'col-12 col-md-6 col-lg-4', 'grande': 'col-12 col-lg-6', 'total': 'col-12'}.get(widget.size, 'col-12 col-md-6 col-lg-4') %}
+    {% set widget_scale_class = {'pequeno': 'widget-small', 'medio': 'widget-medium', 'grande': 'widget-large', 'total': 'widget-full'}.get(widget.size, 'widget-medium') %}
+    {% set cor_widget = {'blue': '#0284c7', 'green': '#16a34a', 'amber': '#d97706', 'red': '#dc2626', 'violet': '#7c3aed', 'slate': '#475569'}.get(widget.color, '#0284c7') %}
+    {% set cor_secundaria = {'blue': '#0284c7', 'green': '#16a34a', 'amber': '#d97706', 'red': '#dc2626', 'violet': '#7c3aed', 'slate': '#475569'}.get(widget.cor_secundaria, '#dc2626') %}
+    {% set cor_status = '#1D9E75' if item.status == 'ok' else ('#BA7517' if item.status == 'atencao' else '#E24B4A') %}
+    <div class="dashboard-widget-column {{ size_class }}{% if widget.widget_type in ['kpi', 'gauge', 'comparativo'] %} widget-animate-in{% endif %}">
+      <div id="widget-card-{{ widget.id }}" class="dashboard-widget-card widget-card {{ widget_scale_class }} widget-size-{{ widget.size }} widget-color-{{ widget.color }}" data-widget-type="{{ widget.widget_type }}" style="{% if widget.widget_type in ['kpi', 'gauge', 'comparativo'] %}position:relative;padding-bottom:42px{% endif %}">
+        <header class="dashboard-widget-head">
+          <div>
+            <span class="widget-type-badge">{{ widget.widget_type }}</span>
+            <h3 class="widget-title">{{ widget.title }}</h3>
+            <div class="widget-subtitle">{{ item.source.name }}{% if item.source.category %} / {{ item.source.category }}{% endif %}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px">
+            <span class="widget-temporal-badge">{{ 'filtro aplicado' if item.uses_timeline else 'sem filtro temporal' }}</span>
+          </div>
+        </header>
+
+        {% if item.error %}
+        <div class="alert alert-warning mb-0">{{ item.error }}</div>
+        {% elif item.rows %}
+          {% if widget.widget_type == 'kpi' %}
+          <div style="padding:8px 0">
+            {% if widget.icone %}
+            <i class="ti {{ widget.icone }}" style="font-size:20px; color:{{ cor_widget }}; margin-bottom:8px; display:block" aria-hidden="true"></i>
+            {% endif %}
+            <div style="font-size:32px; font-weight:500; color:var(--color-text-primary); line-height:1; margin-bottom:8px">
+              {{ widget_data.valor_atual | int | format_number }}
+            </div>
+            {% if widget_data.variacao_pct is not none %}
+            <div style="font-size:12px; display:flex; align-items:center; gap:4px">
+              {% if widget_data.direcao == "up" %}
+              <i class="ti ti-arrow-up" style="color:var(--color-text-success)" aria-hidden="true"></i>
+              <span style="color:var(--color-text-success)">+{{ widget_data.variacao_pct | round(1) }}%</span>
+              {% elif widget_data.direcao == "down" %}
+              <i class="ti ti-arrow-down" style="color:var(--color-text-danger)" aria-hidden="true"></i>
+              <span style="color:var(--color-text-danger)">{{ widget_data.variacao_pct | round(1) }}%</span>
+              {% else %}
+              <i class="ti ti-minus" style="color:var(--color-text-secondary)" aria-hidden="true"></i>
+              <span style="color:var(--color-text-secondary)">Sem variação</span>
+              {% endif %}
+              <span style="font-size:11px; color:var(--color-text-tertiary)">vs período anterior</span>
+            </div>
+            {% endif %}
+          </div>
+          {% elif widget.widget_type == 'gauge' %}
+          <div style="display:flex; flex-direction:column; align-items:center; padding:8px 0">
+            <svg viewBox="0 0 160 90" style="width:160px; height:90px">
+              {% if widget.source_id_b %}
+              <path d="M20,80 A60,60 0 0,1 140,80" fill="none" stroke="{{ cor_widget }}" stroke-width="14" stroke-linecap="round" opacity="0.25"/>
+              {% else %}
+              <path d="M20,80 A60,60 0 0,1 140,80" fill="none" stroke="#e5e5e5" stroke-width="14" stroke-linecap="round"/>
+              {% endif %}
+              <path id="gauge-arc-{{ widget.id }}" fill="none" stroke="{{ cor_widget if widget.source_id_b else cor_status }}" stroke-width="14" stroke-linecap="round"/>
+              <text x="80" y="72" text-anchor="middle" font-size="22" font-weight="500" fill="var(--color-text-primary)">{{ widget_data.percentual | round(1) }}%</text>
+              {% if widget.meta_gauge %}
+              <text x="80" y="84" text-anchor="middle" font-size="9" fill="var(--color-text-tertiary)">meta: {{ widget.meta_gauge | int }}%</text>
+              {% endif %}
+            </svg>
+            <script>
+            (function() {
+              var pct = Math.max(0, Math.min(100, {{ widget_data.percentual }}));
+              var r = 60, cx = 80, cy = 80;
+              var start = Math.PI;
+              var angle = start + (pct / 100) * Math.PI;
+              var x = cx + r * Math.cos(angle);
+              var y = cy + r * Math.sin(angle);
+              var large = angle - start > Math.PI ? 1 : 0;
+              var d = "M20,80 A60,60 0 " + large + ",1 " + x.toFixed(1) + "," + y.toFixed(1);
+              document.getElementById("gauge-arc-{{ widget.id }}").setAttribute("d", d);
+            })();
+            </script>
+            {% if widget.meta_gauge %}
+            <div style="font-size:11px; margin-top:4px; color:{% if widget_data.status == 'ok' %}var(--color-text-success){% elif widget_data.status == 'atencao' %}var(--color-text-warning){% else %}var(--color-text-danger){% endif %}">
+              {% if widget_data.status == "ok" %}Dentro da meta{% elif widget_data.status == "atencao" %}Atenção - próximo do limite{% else %}Abaixo da meta{% endif %}
+            </div>
+            {% endif %}
+            {% if widget_data.total_a is defined and widget_data.total_b is defined %}
+            <div style="display:flex; justify-content:center; gap:16px; margin-top:4px">
+              <div style="text-align:center">
+                <div style="color:{{ cor_widget }}; font-size:18px; font-weight:500">
+                  {{ widget_data.total_a | int | format_number }}
+                </div>
+                <div style="font-size:10px; color:var(--color-text-tertiary)">
+                  {{ widget.source.name }}
+                </div>
+              </div>
+              <div style="width:0.5px; background:var(--color-border-tertiary); align-self:stretch"></div>
+              <div style="text-align:center">
+                <div style="color:{{ cor_secundaria }}; font-size:18px; font-weight:500">
+                  {{ widget_data.total_b | int | format_number }}
+                </div>
+                <div style="font-size:10px; color:var(--color-text-tertiary)">
+                  {{ widget.source_b.name }}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          {% elif widget.widget_type == 'comparativo' %}
+          <div style="display:flex; align-items:center; gap:16px; padding:8px 0">
+            <div style="display:flex; flex-direction:column; gap:4px">
+              <span style="font-size:11px; color:var(--color-text-tertiary)">{{ widget_data.label_a if widget_data.label_a is defined else 'Período atual' }}</span>
+              <span style="font-size:28px; font-weight:500; color:var(--color-text-primary)">{{ widget_data.valor_atual | int | format_number }}</span>
+            </div>
+            <div style="width:0.5px; align-self:stretch; background:var(--color-border-tertiary)"></div>
+            <div style="display:flex; flex-direction:column; gap:4px">
+              <span style="font-size:11px; color:var(--color-text-tertiary)">{% if widget_data.label_b is defined %}{{ widget_data.label_b }}{% elif widget.comparar_com == "ano_anterior" %}Mesmo período ano anterior{% else %}Mês anterior{% endif %}</span>
+              <span style="font-size:28px; font-weight:500; color:{{ cor_secundaria }}">{{ (widget_data.valor_comparativo or 0) | int | format_number }}</span>
+            </div>
+            {% if widget_data.variacao_pct is not none %}
+            <div style="padding:4px 10px; border-radius:20px; font-size:12px; font-weight:500; align-self:center; background:{% if widget_data.direcao == 'up' %}var(--color-background-success){% elif widget_data.direcao == 'down' %}var(--color-background-danger){% else %}var(--color-background-secondary){% endif %}; color:{% if widget_data.direcao == 'up' %}var(--color-text-success){% elif widget_data.direcao == 'down' %}var(--color-text-danger){% else %}var(--color-text-secondary){% endif %}">
+              {% if widget_data.variacao_pct > 0 %}+{% endif %}{{ widget_data.variacao_pct | round(1) }}%
+            </div>
+            {% endif %}
+          </div>
+          {% elif widget.widget_type != 'tabela' %}
+          <div class="dashboard-widget-visual widget-chart-container" data-dashboard-chart
+               data-chart-id="chart-{{ widget.id }}"
+               data-widget-type="{{ widget.widget_type }}"
+               data-widget-size="{{ widget.size }}"
+               data-rows='{{ item.rows|tojson }}'
+               data-value-title="{{ item.columns[-1].title }}">
+            <canvas id="chart-{{ widget.id }}" aria-label="{{ widget.title }}"></canvas>
+            <div class="dashboard-chart-error d-none">Grafico indisponivel.</div>
+          </div>
+          {% if widget.widget_type in ['pizza', 'barra', 'barra_horizontal', 'area', 'linha'] %}
+          {% set chart_total = namespace(value=0) %}
+          {% for row in item.rows %}
+            {% set chart_total.value = chart_total.value + (row.value | float) %}
+          {% endfor %}
+          <div style="margin-top:8px;max-height:276px;overflow-y:auto;border-top:0.5px solid var(--color-border-tertiary)">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.25;table-layout:fixed">
+              <thead>
+                <tr style="background:var(--color-background-secondary)">
+                  {% if widget.widget_type == 'pizza' %}
+                  <th style="text-align:left;padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-weight:500;color:var(--color-text-tertiary)">Label</th>
+                  <th style="text-align:right;padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-weight:500;color:var(--color-text-tertiary)">Valor</th>
+                  <th style="text-align:right;padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-weight:500;color:var(--color-text-tertiary)">Percentual</th>
+                  {% elif widget.widget_type in ['area', 'linha'] %}
+                  <th style="text-align:left;padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-weight:500;color:var(--color-text-tertiary)">Período</th>
+                  <th style="text-align:right;padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-weight:500;color:var(--color-text-tertiary)">Valor</th>
+                  {% else %}
+                  <th style="text-align:left;padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-weight:500;color:var(--color-text-tertiary)">Label</th>
+                  <th style="text-align:right;padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-weight:500;color:var(--color-text-tertiary)">Valor</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in item.rows %}
+                {% set label = row.label if row.label is defined and row.label is not none else (row.series if row.series is defined and row.series is not none else loop.index) %}
+                <tr style="background:{{ 'var(--color-background-secondary)' if loop.index0 is odd else 'var(--color-background-primary)' }}">
+                  <td style="padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ label }}</td>
+                  <td style="padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-primary);text-align:right;white-space:nowrap">{{ row.value | format_number }}</td>
+                  {% if widget.widget_type == 'pizza' %}
+                  <td style="padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-primary);text-align:right;white-space:nowrap">{{ '%.1f'|format(((row.value | float) / chart_total.value * 100) if chart_total.value else 0) }}%</td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+                {% if widget.widget_type in ['pizza', 'barra', 'barra_horizontal'] %}
+                <tr style="background:var(--color-background-secondary)">
+                  <td style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-primary);font-weight:500">Total</td>
+                  <td style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-primary);font-weight:500;text-align:right;white-space:nowrap">{{ chart_total.value | format_number }}</td>
+                  {% if widget.widget_type == 'pizza' %}
+                  <td style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-primary);font-weight:500;text-align:right;white-space:nowrap">100%</td>
+                  {% endif %}
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          {% endif %}
+        {% else %}
+        <div class="empty-state">Sem dados para o período atual.</div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="col-12"><div class="empty-state dashboard-widget-empty">Nenhum widget com fonte habilitada foi configurado.</div></div>
+    {% endfor %}
+  </div>
+</section>
+<script>
+  (() => {
+    const palette = [
+      "#0284c7", "#16a34a", "#d97706", "#dc2626", "#7c3aed",
+      "#0891b2", "#db2777", "#475569", "#65a30d", "#ea580c"
+    ];
+    const numericValue = (row) => {
+      const normalized = String(row.value ?? 0).replace(",", ".");
+      const value = Number(normalized);
+      return Number.isFinite(value) ? value : 0;
+    };
+    const displayLabel = (row, fallback) => String(row.label ?? row.series ?? fallback);
+    const chartScale = (size) => ({
+      pequeno: { legend: 9, ticks: 9, padding: 6, point: 2, border: 1.5 },
+      medio: { legend: 10, ticks: 10, padding: 8, point: 2.5, border: 2 },
+      grande: { legend: 11, ticks: 11, padding: 10, point: 3, border: 2.5 },
+      total: { legend: 12, ticks: 12, padding: 12, point: 3.5, border: 3 },
+    }[size] || { legend: 10, ticks: 10, padding: 8, point: 2.5, border: 2 });
+
+    const chartBaseOptions = (size) => {
+      const scale = chartScale(size);
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: scale.padding },
+        elements: {
+          point: { radius: scale.point },
+          line: { borderWidth: scale.border },
+          bar: { borderWidth: 0 }
+        },
+        plugins: {
+          legend: {
+            position: "bottom",
+            labels: {
+              boxHeight: scale.legend,
+              boxWidth: scale.legend,
+              font: { size: scale.legend },
+              padding: Math.max(6, scale.padding)
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { font: { size: scale.ticks }, maxRotation: 35, autoSkip: true },
+            grid: { display: size !== "pequeno" }
+          },
+          y: {
+            ticks: { font: { size: scale.ticks } },
+            grid: { display: size !== "pequeno" }
+          }
+        }
+      };
+    };
+    const pieOptions = (size) => ({
+      ...chartBaseOptions(size),
+      scales: {
+        x: { display: false },
+        y: { display: false }
+      },
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: {
+            boxWidth: 10,
+            font: { size: 10 },
+            maxWidth: 200
+          }
+        }
+      }
+    });
+    const groupedDatasets = (rows) => {
+      const labels = [...new Set(rows.map((row, index) => displayLabel(row, index + 1)))];
+      const seriesNames = [...new Set(rows.map((row) => String(row.series ?? "")))];
+      if (seriesNames.length <= 1 && seriesNames[0] === "") {
+        return {
+          labels,
+          datasets: [{
+            data: labels.map((label) => numericValue(rows.find((row, index) => displayLabel(row, index + 1) === label))),
+            backgroundColor: palette[0],
+            borderColor: palette[0]
+          }]
+        };
+      }
+      return {
+        labels,
+        datasets: seriesNames.map((series, index) => ({
+          label: series,
+          data: labels.map((label) => {
+            const row = rows.find((item, rowIndex) =>
+              displayLabel(item, rowIndex + 1) === label && String(item.series ?? "") === series
+            );
+            return row ? numericValue(row) : 0;
+          }),
+          backgroundColor: palette[index % palette.length],
+          borderColor: palette[index % palette.length]
+        }))
+      };
+    };
+    const chartConfig = (type, rows, valueTitle, size) => {
+      const data = groupedDatasets(rows);
+      const baseOptions = chartBaseOptions(size);
+      if (type === "pizza" || type === "doughnut") {
+        return {
+          type: type === "doughnut" ? "doughnut" : "pie",
+          data: {
+            labels: rows.map((row, index) => displayLabel(row, index + 1)),
+            datasets: [{
+              data: rows.map(numericValue),
+              backgroundColor: rows.map((_, index) => palette[index % palette.length])
+            }]
+          },
+          options: pieOptions(size)
+        };
+      }
+      if (type === "linha" || type === "area") {
+        data.datasets.forEach((dataset) => {
+          dataset.label = dataset.label || valueTitle;
+          dataset.fill = type === "area";
+          dataset.tension = 0.24;
+          dataset.backgroundColor = type === "area" ? `${dataset.backgroundColor}33` : dataset.backgroundColor;
+        });
+        return { type: "line", data, options: baseOptions };
+      }
+      data.datasets.forEach((dataset) => {
+        dataset.label = dataset.label || valueTitle;
+      });
+      return {
+        type: "bar",
+        data,
+        options: {
+          ...baseOptions,
+          indexAxis: type === "barra_horizontal" ? "y" : "x"
+        }
+      };
+    };
+    document.querySelectorAll("[data-dashboard-chart]").forEach((container) => {
+      const type = container.dataset.widgetType;
+      const canvas = document.getElementById(container.dataset.chartId);
+      const error = container.querySelector(".dashboard-chart-error");
+      try {
+        const rows = JSON.parse(container.dataset.rows || "[]");
+        if (!window.Chart || !canvas || !rows.length) {
+          throw new Error("chart unavailable");
+        }
+        new Chart(canvas, chartConfig(type, rows, container.dataset.valueTitle || "Total", container.dataset.widgetSize || "medio"));
+      } catch (chartError) {
+        if (canvas) {
+          canvas.classList.add("d-none");
+        }
+        if (error) {
+          error.classList.remove("d-none");
+        }
+      }
+    });
+    const pdfSettings = {
+      logo: {{ (pdf_logo if pdf_logo is defined else '') | tojson }},
+      title: {{ (pdf_titulo if pdf_titulo is defined else (appearance.portal_name if appearance is defined else 'GLPI Reports')) | tojson }},
+      subtitle: {{ (pdf_subtitulo if pdf_subtitulo is defined else '') | tojson }},
+      footer: {{ (pdf_rodape if pdf_rodape is defined else '') | tojson }},
+      dashboardName: {{ (dashboard.name if dashboard else 'Dashboard') | tojson }},
+      dateFrom: {{ filters.date_from | tojson }},
+      dateTo: {{ filters.date_to | tojson }}
+    };
+    const datePtBr = (value) => {
+      if (!value) {
+        return "";
+      }
+      const parts = String(value).split("-");
+      return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(value);
+    };
+    const pdfImageFormat = (dataUrl) => {
+      const header = String(dataUrl || "").slice(0, 30).toLowerCase();
+      return header.includes("image/jpeg") || header.includes("image/jpg") ? "JPEG" : "PNG";
+    };
+    const loadImageSize = (src) => new Promise((resolve) => {
+      if (!src) {
+        resolve(null);
+        return;
+      }
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height });
+      image.onerror = () => resolve(null);
+      image.src = src;
+    });
+    const groupWidgetRows = (columns) => {
+      const rows = [];
+      columns.forEach((column) => {
+        const top = Math.round(column.getBoundingClientRect().top);
+        const existing = rows.find((row) => Math.abs(row.top - top) <= 8);
+        if (existing) {
+          existing.columns.push(column);
+          existing.top = Math.min(existing.top, top);
+        } else {
+          rows.push({ top, columns: [column] });
+        }
+      });
+      rows.sort((a, b) => a.top - b.top);
+      rows.forEach((row) => {
+        row.columns.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+      });
+      return rows;
+    };
+    const nextAnimationFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const expandScrollableContent = (root) => {
+      const changed = [];
+      const nodes = [root, ...root.querySelectorAll("*")];
+      nodes.forEach((node) => {
+        const style = window.getComputedStyle(node);
+        const hasScrollableOverflow = [style.overflow, style.overflowY].some((value) => value === "auto" || value === "scroll");
+        if (!hasScrollableOverflow) {
+          return;
+        }
+        changed.push({
+          node,
+          overflow: node.style.overflow,
+          overflowY: node.style.overflowY,
+          height: node.style.height,
+          maxHeight: node.style.maxHeight
+        });
+        node.style.overflow = "visible";
+        node.style.overflowY = "visible";
+        node.style.height = "auto";
+        node.style.maxHeight = "none";
+      });
+      return changed;
+    };
+    const captureGridRow = async (columns) => {
+      const rowBounds = columns.reduce((bounds, column) => {
+        const rect = column.getBoundingClientRect();
+        return {
+          left: Math.min(bounds.left, rect.left),
+          top: Math.min(bounds.top, rect.top),
+          right: Math.max(bounds.right, rect.right),
+          bottom: Math.max(bounds.bottom, rect.bottom)
+        };
+      }, { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
+      const cloneHost = document.createElement("div");
+      cloneHost.style.position = "absolute";
+      cloneHost.style.left = "-100000px";
+      cloneHost.style.top = "0";
+      cloneHost.style.width = `${Math.ceil(rowBounds.right - rowBounds.left)}px`;
+      cloneHost.style.height = `${Math.ceil(rowBounds.bottom - rowBounds.top)}px`;
+      cloneHost.style.background = getComputedStyle(document.body).backgroundColor || "#ffffff";
+      cloneHost.style.overflow = "hidden";
+
+      columns.forEach((column) => {
+        const rect = column.getBoundingClientRect();
+        const clone = column.cloneNode(true);
+        clone.style.position = "absolute";
+        clone.style.left = `${Math.round(rect.left - rowBounds.left)}px`;
+        clone.style.top = `${Math.round(rect.top - rowBounds.top)}px`;
+        clone.style.width = `${Math.round(rect.width)}px`;
+        clone.style.height = `${Math.round(rect.height)}px`;
+        clone.style.margin = "0";
+        clone.classList.remove("col-12", "col-md-6", "col-lg-3", "col-lg-4", "col-lg-6");
+        const originalCanvases = Array.from(column.querySelectorAll("canvas"));
+        const clonedCanvases = Array.from(clone.querySelectorAll("canvas"));
+        clonedCanvases.forEach((clonedCanvas, index) => {
+          const originalCanvas = originalCanvases[index];
+          if (!originalCanvas) {
+            return;
+          }
+          const image = document.createElement("img");
+          image.src = originalCanvas.toDataURL("image/png");
+          image.alt = clonedCanvas.getAttribute("aria-label") || "";
+          image.style.width = `${originalCanvas.getBoundingClientRect().width}px`;
+          image.style.height = `${originalCanvas.getBoundingClientRect().height}px`;
+          image.style.display = "block";
+          image.style.maxWidth = "100%";
+          clonedCanvas.replaceWith(image);
+        });
+        cloneHost.appendChild(clone);
+      });
+
+      document.body.appendChild(cloneHost);
+      try {
+        const expandedStyles = expandScrollableContent(cloneHost);
+        cloneHost.style.height = "auto";
+        await nextAnimationFrame();
+        cloneHost.style.width = `${cloneHost.scrollWidth}px`;
+        cloneHost.style.height = `${cloneHost.scrollHeight}px`;
+        await nextAnimationFrame();
+        const canvas = await html2canvas(cloneHost, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: "#ffffff",
+          scrollX: 0,
+          scrollY: 0,
+          width: cloneHost.offsetWidth,
+          height: cloneHost.offsetHeight,
+          windowWidth: document.documentElement.scrollWidth,
+          windowHeight: document.documentElement.scrollHeight
+        });
+        expandedStyles.forEach((item) => {
+          item.node.style.overflow = item.overflow;
+          item.node.style.overflowY = item.overflowY;
+          item.node.style.height = item.height;
+          item.node.style.maxHeight = item.maxHeight;
+        });
+        await nextAnimationFrame();
+        return {
+          canvas,
+          image: canvas.toDataURL("image/png")
+        };
+      } finally {
+        cloneHost.remove();
+        await nextAnimationFrame();
+      }
+    };
+    const drawPdfHeader = (pdf, pageWidth, margin, logoSize) => {
+      const headerTop = margin;
+      const headerBottom = margin + 25;
+      if (pdfSettings.logo && logoSize) {
+        const logoHeight = Math.min(20, logoSize.height ? (logoSize.height / logoSize.width) * 45 : 20);
+        const logoWidth = Math.min(45, logoSize.width && logoSize.height ? (logoSize.width / logoSize.height) * logoHeight : 45);
+        pdf.addImage(pdfSettings.logo, pdfImageFormat(pdfSettings.logo), margin, headerTop, logoWidth, logoHeight);
+      }
+
+      pdf.setTextColor(30, 41, 59);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(12);
+      pdf.text(pdfSettings.title || "GLPI Reports", pageWidth / 2, headerTop + 6, { align: "center" });
+      if (pdfSettings.subtitle) {
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(pdfSettings.subtitle, pageWidth / 2, headerTop + 12, { align: "center" });
+      }
+
+      const generatedAt = new Date().toLocaleString("pt-BR");
+      const periodText = `${datePtBr(pdfSettings.dateFrom)} a ${datePtBr(pdfSettings.dateTo)}`;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(8);
+      pdf.setTextColor(30, 41, 59);
+      pdf.text(pdfSettings.dashboardName || "Dashboard", pageWidth - margin, headerTop + 4, { align: "right", maxWidth: 70 });
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(`Período: ${periodText}`, pageWidth - margin, headerTop + 10, { align: "right" });
+      pdf.text(`Gerado em: ${generatedAt}`, pageWidth - margin, headerTop + 15, { align: "right" });
+
+      pdf.setDrawColor(226, 232, 240);
+      pdf.setLineWidth(0.2);
+      pdf.line(margin, headerBottom, pageWidth - margin, headerBottom);
+    };
+    const drawPdfFooters = (pdf, pageWidth, pageHeight, margin) => {
+      const totalPages = pdf.getNumberOfPages();
+      for (let page = 1; page <= totalPages; page += 1) {
+        pdf.setPage(page);
+        pdf.setDrawColor(226, 232, 240);
+        pdf.setLineWidth(0.2);
+        pdf.line(margin, pageHeight - margin - 7, pageWidth - margin, pageHeight - margin - 7);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+        pdf.setTextColor(100, 116, 139);
+        if (pdfSettings.footer) {
+          pdf.text(pdfSettings.footer, margin, pageHeight - margin - 2, { align: "left", maxWidth: 190 });
+        }
+        pdf.text(`Página ${page} de ${totalPages}`, pageWidth - margin, pageHeight - margin - 2, { align: "right" });
+      }
+    };
+    document.getElementById("btn-export-pdf")?.addEventListener("click", async function() {
+      const button = this;
+      const animatedEls = document.querySelectorAll(".widget-animate-in");
+      const widgetsContainer = document.getElementById("widgets-container");
+      const columns = Array.from(document.querySelectorAll(".dashboard-widget-column"));
+      if (!widgetsContainer || !columns.length || !window.html2canvas || !window.jspdf) {
+        return;
+      }
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = "Gerando PDF...";
+      animatedEls.forEach(function(el) {
+        el.style.animation = "none";
+        el.style.opacity = "1";
+        el.style.transform = "none";
+      });
+
+      try {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const pdf = new jspdf.jsPDF("l", "mm", "a4");
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 10;
+        const usableWidth = 277;
+        const contentTop = margin + 25;
+        const footerHeight = 8;
+        const contentBottom = pageHeight - margin - footerHeight;
+        const usableContentHeight = contentBottom - contentTop;
+        const rowGap = 5;
+        const logoSize = await loadImageSize(pdfSettings.logo);
+        let cursorY = contentTop;
+
+        drawPdfHeader(pdf, pageWidth, margin, logoSize);
+
+        const addPage = () => {
+          pdf.addPage();
+          drawPdfHeader(pdf, pageWidth, margin, logoSize);
+          cursorY = contentTop;
+        };
+
+        for (const row of groupWidgetRows(columns)) {
+          if (!row.columns.length) {
+            continue;
+          }
+          const capturedRow = await captureGridRow(row.columns);
+          let rowWidthMm = usableWidth;
+          let rowHeightMm = capturedRow.canvas.height * rowWidthMm / capturedRow.canvas.width;
+          if (rowHeightMm > usableContentHeight) {
+            const shrink = usableContentHeight / rowHeightMm;
+            rowWidthMm *= shrink;
+            rowHeightMm *= shrink;
+          }
+          if (cursorY + rowHeightMm > contentBottom && cursorY > contentTop) {
+            addPage();
+          }
+          const x = margin + Math.max(0, (usableWidth - rowWidthMm) / 2);
+          pdf.addImage(capturedRow.image, "PNG", x, cursorY, rowWidthMm, rowHeightMm);
+          cursorY += rowHeightMm + rowGap;
+        }
+
+        drawPdfFooters(pdf, pageWidth, pageHeight, margin);
+        pdf.save("dashboard.pdf");
+      } finally {
+        animatedEls.forEach(function(el) {
+          el.style.animation = "";
+          el.style.opacity = "";
+          el.style.transform = "";
+        });
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    });
+  })();
+</script>
+{% endblock %}

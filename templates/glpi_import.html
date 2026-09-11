@@ -1,0 +1,1971 @@
+{% extends "base.html" %}
+{% block head %}
+{% if running_import %}
+<meta http-equiv="refresh" content="15">
+{% endif %}
+<style>
+  .import-status-line {
+    align-items: center;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-left-width: 3px;
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1rem;
+    min-height: 38px;
+    padding: 8px 12px;
+  }
+
+  .import-status-line i {
+    flex: 0 0 auto;
+    font-size: 17px;
+  }
+
+  .import-status-line .ti-spin {
+    animation: importSpin 0.9s linear infinite;
+  }
+
+  @keyframes importSpin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .import-status-line span {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .import-status-success {
+    background: rgba(29, 158, 117, 0.08);
+    border-left-color: #1D9E75;
+  }
+
+  .import-status-success i {
+    color: #1D9E75;
+  }
+
+  .import-status-running {
+    background: rgba(55, 138, 221, 0.08);
+    border-left-color: #378ADD;
+  }
+
+  .import-status-running i {
+    color: #378ADD;
+  }
+
+  .import-status-error {
+    background: rgba(226, 75, 74, 0.08);
+    border-left-color: #E24B4A;
+  }
+
+  .import-status-error i {
+    color: #E24B4A;
+  }
+
+  .import-status-stopped {
+    background: rgba(100, 116, 139, 0.08);
+    border-left-color: #94A3B8;
+  }
+
+  .import-status-stopped i {
+    color: #64748B;
+  }
+
+  .import-metric-grid {
+    gap: 10px;
+    margin-bottom: 1rem;
+  }
+
+  .import-metric-grid .metric-card {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    box-shadow: none;
+    padding: 1rem 1.25rem;
+  }
+
+  .import-metric-grid .metric-card span {
+    color: var(--color-text-tertiary);
+    display: block;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  .import-metric-grid .metric-card strong {
+    color: var(--color-text-primary);
+    display: block;
+    font-size: 24px;
+    font-weight: 500;
+    line-height: 1.15;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .import-metric-success,
+  .import-metric-running,
+  .import-metric-error {
+    border-top-width: 3px !important;
+  }
+
+  .import-metric-success {
+    border-top-color: #1D9E75 !important;
+  }
+
+  .import-metric-running {
+    border-top-color: #378ADD !important;
+  }
+
+  .import-metric-error {
+    border-top-color: #E24B4A !important;
+  }
+
+  .import-portal-card {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    box-shadow: none;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    margin-bottom: 1rem;
+    padding: 1rem 1.25rem;
+  }
+
+  .import-portal-card > form {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .import-card-body {
+    flex: 1 1 auto;
+  }
+
+  .import-card-header {
+    align-items: center;
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .import-card-header h2 {
+    color: var(--color-text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0;
+  }
+
+  .import-section-label,
+  .import-field-label {
+    color: var(--color-text-tertiary);
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+
+  .import-section-label {
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+  }
+
+  .import-field-label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+
+  .import-portal-card .form-control,
+  .import-portal-card .form-select {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-size: 12px;
+    height: 32px;
+    padding: 0 10px;
+  }
+
+  .import-portal-card .form-control:focus,
+  .import-portal-card .form-select:focus {
+    border-color: #85B7EB;
+    box-shadow: 0 0 0 0.15rem rgba(55, 138, 221, 0.16);
+  }
+
+  .schedule-day-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .schedule-day-pill {
+    align-items: center;
+    background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 12px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 11px;
+    line-height: 1;
+    margin: 0;
+    min-height: 26px;
+    padding: 5px 10px;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, opacity .15s ease;
+  }
+
+  .schedule-day-pill .form-check-input {
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .schedule-day-pill:has(.form-check-input:checked) {
+    background: #378ADD;
+    border-color: #378ADD;
+    color: #fff;
+  }
+
+  .schedule-day-pill:has(.form-check-input:focus-visible) {
+    box-shadow: 0 0 0 0.15rem rgba(55, 138, 221, 0.16);
+  }
+
+  .schedule-day-pill:has(.form-check-input:disabled) {
+    cursor: default;
+    opacity: .4;
+  }
+
+  .import-switch {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    margin: 0;
+  }
+
+  .import-switch .form-check-input {
+    cursor: pointer;
+    height: 20px;
+    margin: 0;
+    width: 36px;
+  }
+
+  .import-switch .form-check-label {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+
+  .import-form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: auto;
+    padding-top: 18px;
+  }
+
+	  .connector-list {
+	    margin-bottom: 1rem;
+	  }
+
+	  .connector-card-shell {
+	    cursor: pointer;
+	    margin-bottom: 1rem;
+	  }
+	
+	  .connector-card-shell.is-selected .connector-summary-card {
+	    border-color: #378ADD;
+	    box-shadow: 0 0 0 2px rgba(55, 138, 221, 0.15);
+	  }
+	
+	  .connector-card-shell.is-expanded .connector-summary-card {
+	    border-color: #B5D4F4;
+	  }
+
+  .connector-summary-card {
+    transition: border-color .18s ease, box-shadow .18s ease;
+  }
+
+  .connector-summary-meta {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  .connector-inline-panel {
+    border-color: #B5D4F4;
+    display: none;
+    margin-top: -0.5rem;
+    overflow: hidden;
+  }
+
+  .connector-inline-panel.is-open {
+    display: flex;
+  }
+
+  .connector-panel-divider {
+    border-top: 0.5px solid var(--color-border-tertiary);
+    margin: 4px 0 0;
+  }
+
+  .connector-ghost-btn {
+    background: transparent;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 6px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    min-height: 31px;
+    padding: 5px 12px;
+  }
+
+  .connector-ghost-btn:hover,
+  .connector-ghost-btn:focus {
+    border-color: #B5D4F4;
+    color: var(--color-text-primary);
+  }
+
+  .connector-toggle-btn {
+    background: #FAEEDA;
+    border: 0.5px solid #EF9F27;
+    border-radius: 6px;
+    color: #854F0B;
+    font-size: 12px;
+    min-height: 31px;
+    padding: 5px 12px;
+  }
+
+  .connector-delete-btn {
+    background: #FCEBEB;
+    border: 0.5px solid #F87171;
+    border-radius: 6px;
+    color: #991B1B;
+    cursor: pointer;
+    font-size: 12px;
+    min-height: 31px;
+    padding: 5px 12px;
+  }
+
+  .connector-delete-btn:hover {
+    background: #FEE2E2;
+    border-color: #EF4444;
+  }
+
+  .step-indicator {
+    align-items: center;
+    background: var(--color-border);
+    border-radius: 50%;
+    color: var(--color-text-tertiary);
+    display: flex;
+    font-size: 12px;
+    font-weight: 600;
+    height: 28px;
+    justify-content: center;
+    width: 28px;
+  }
+
+  .step-indicator.active {
+    background: #2563EB;
+    color: white;
+  }
+
+  .step-indicator.done {
+    background: #16a34a;
+    color: white;
+  }
+
+  .step-line {
+    background: var(--color-border);
+    flex: 1;
+    height: 2px;
+    margin: auto;
+  }
+
+  .mode-card {
+    border: 2px solid var(--color-border);
+    border-radius: 8px;
+    cursor: pointer;
+    min-height: 180px;
+    padding: 20px;
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+
+  .mode-card.selected {
+    background: #F0F7FF;
+    border-color: #B5D4F4;
+  }
+
+  .mode-card:hover {
+    border-color: #93C5FD;
+  }
+
+  .mode-card strong {
+    color: var(--color-text-primary);
+    display: block;
+    font-size: 15px;
+    margin-bottom: 10px;
+  }
+
+  .mode-card p {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+    margin: 0;
+  }
+
+  .connector-modal-form .form-control,
+  .connector-modal-form .form-select {
+    font-size: 12px;
+    min-height: 34px;
+  }
+
+  .connector-modal-form .is-invalid {
+    border-color: #dc3545 !important;
+  }
+
+  .table-select-wrap {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .table-select-wrap table {
+    margin-bottom: 0;
+  }
+
+  .table-select-wrap thead th {
+    background: var(--color-background-secondary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .table-row-large {
+    background: rgba(251, 191, 36, 0.1);
+  }
+
+  .table-select-row.table-row-selected {
+    box-shadow: inset 3px 0 var(--color-primary, #0d6efd);
+  }
+
+  .table-selection-footer {
+    align-items: center;
+    color: var(--color-text-secondary);
+    display: flex;
+    font-size: 12px;
+    justify-content: space-between;
+    margin-top: 10px;
+  }
+
+  .badge-mode-automatic {
+    background: #E6F1FB;
+    color: #1d4ed8;
+    font-size: 11px;
+  }
+
+  .badge-mode-custom {
+    background: #F3F0FF;
+    color: #6d28d9;
+    font-size: 11px;
+  }
+
+  .connector-schedule-columns {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 768px) {
+    .connector-schedule-columns {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .import-primary-soft {
+    background: #E6F1FB;
+    border: 0.5px solid #85B7EB;
+    border-radius: 6px;
+    color: #185FA5;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 6px 16px;
+  }
+
+	  .import-primary-soft:hover,
+	  .import-primary-soft:focus {
+	    background: #D8EAFB;
+	    border-color: #378ADD;
+	    color: #185FA5;
+	  }
+	
+	  #errorLog .panel-header {
+	    margin-bottom: 6px;
+	    padding-bottom: 6px;
+	  }
+	
+	  #errorLog .table {
+	    font-size: 11px;
+	    margin-bottom: 0;
+	  }
+	
+	  #errorLog .table th,
+	  #errorLog .table td {
+	    padding: 4px 8px;
+	  }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    'use strict';
+
+    function initConnectorDeleteModal() {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token }}';
+      const excluirModalEl = document.getElementById('modal-excluir-conector');
+      const excluirBody = document.getElementById('modal-excluir-body');
+      const excluirFooter = document.getElementById('modal-excluir-footer');
+      const excluirTitulo = document.getElementById('modalExcluirLabel');
+
+      if (!excluirModalEl || !excluirBody || !excluirFooter) {
+        return;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        }[char]));
+      }
+
+      function getExcluirModal() {
+        if (!window.bootstrap?.Modal) {
+          return null;
+        }
+        return bootstrap.Modal.getOrCreateInstance(excluirModalEl);
+      }
+
+      function renderExcluirLoading() {
+        excluirBody.innerHTML = `
+          <div class="d-flex justify-content-center py-3">
+            <span class="spinner-border"></span>
+          </div>`;
+        excluirFooter.innerHTML = `
+          <button type="button" class="btn btn-outline-secondary"
+                  data-bs-dismiss="modal">Fechar</button>`;
+      }
+
+      function renderExcluirBloqueado(refs) {
+        const itens = (refs || []).map(r =>
+          `<li><strong>${escapeHtml(r.type)}:</strong> ${escapeHtml(r.name)}</li>`
+        ).join('');
+        excluirBody.innerHTML = `
+          <div class="alert alert-warning mb-3">
+            Não é possível excluir este conector enquanto houver
+            referências ativas.
+          </div>
+          <p style="font-size:13px;margin-bottom:8px">
+            Remova as referências abaixo primeiro:
+          </p>
+          <ul style="font-size:13px">${itens}</ul>`;
+        excluirFooter.innerHTML = `
+          <button type="button" class="btn btn-outline-secondary"
+                  data-bs-dismiss="modal">Fechar</button>`;
+      }
+
+      function renderExcluirConfirmacao(connectorId, connectorName,
+                                         targetDb, dbExists) {
+        const dbSection = dbExists ? `
+          <div class="mt-3 p-3"
+               style="background:#FFF7ED;border:0.5px solid #FCD34D;
+                      border-radius:6px">
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="checkbox"
+                     id="chk-drop-db" value="on">
+              <label class="form-check-label" for="chk-drop-db"
+                     style="font-size:13px;font-weight:500">
+                Excluir também a database local
+                <code>${escapeHtml(targetDb)}</code>
+              </label>
+            </div>
+            <p style="font-size:11px;color:#92400E;margin:4px 0 0 24px">
+              Todos os dados locais serão permanentemente apagados.
+              Esta ação não pode ser desfeita.
+            </p>
+          </div>` : '';
+
+        excluirBody.innerHTML = `
+          <div class="alert alert-danger mb-3" style="font-size:13px">
+            <strong>Esta ação é irreversível.</strong>
+            Todos os metadados, histórico de sincronização e runs
+            do conector <strong>${escapeHtml(connectorName)}</strong>
+            serão excluídos permanentemente.
+          </div>
+          ${dbSection}
+          <div class="mt-3">
+            <label style="font-size:12px;font-weight:500;
+                          display:block;margin-bottom:6px">
+              Para confirmar, digite o nome do conector:
+              <code>${escapeHtml(connectorName)}</code>
+            </label>
+            <input type="text" class="form-control" id="excluir-confirm-input"
+                   placeholder="${escapeHtml(connectorName)}"
+                   autocomplete="off">
+          </div>`;
+
+        excluirFooter.innerHTML = `
+          <button type="button" class="btn btn-outline-secondary"
+                  data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="connector-delete-btn"
+                  id="excluir-confirm-btn" disabled
+                  style="padding:6px 16px">Excluir permanentemente</button>`;
+
+        const input = document.getElementById('excluir-confirm-input');
+        const btn = document.getElementById('excluir-confirm-btn');
+
+        input?.addEventListener('input', () => {
+          btn.disabled = input.value.trim() !== connectorName;
+        });
+
+        btn?.addEventListener('click', () => {
+          const dropDb = dbExists &&
+            document.getElementById('chk-drop-db')?.checked;
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = `/admin/connectors/${encodeURIComponent(connectorId)}/delete`;
+          const csrf = document.createElement('input');
+          csrf.type = 'hidden';
+          csrf.name = 'csrf_token';
+          csrf.value = csrfToken;
+          form.appendChild(csrf);
+          if (dropDb) {
+            const drop = document.createElement('input');
+            drop.type = 'hidden';
+            drop.name = 'drop_database';
+            drop.value = 'on';
+            form.appendChild(drop);
+          }
+          document.body.appendChild(form);
+          form.submit();
+        });
+      }
+
+      document.querySelectorAll('.connector-delete-btn[data-connector-id]')
+        .forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const id = btn.dataset.connectorId;
+            const name = btn.dataset.connectorName || '';
+            if (excluirTitulo) {
+              excluirTitulo.textContent = `Excluir conector — ${name}`;
+            }
+            renderExcluirLoading();
+            getExcluirModal()?.show();
+            try {
+              const resp = await fetch(
+                `/admin/connectors/${encodeURIComponent(id)}/delete-check`,
+                { headers: { 'X-CSRF-Token': csrfToken } }
+              );
+              const data = await resp.json();
+              if (data.error) {
+                excluirBody.innerHTML =
+                  `<div class="alert alert-danger">${escapeHtml(data.error)}</div>`;
+                return;
+              }
+              if (data.blocked) {
+                renderExcluirBloqueado(data.blocking_refs);
+              } else {
+                renderExcluirConfirmacao(
+                  id, name, data.target_database, data.database_exists
+                );
+              }
+            } catch (err) {
+              excluirBody.innerHTML =
+                `<div class="alert alert-danger">
+                   Erro ao verificar dependências: ${escapeHtml(err.message)}
+                 </div>`;
+            }
+          });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initConnectorDeleteModal);
+    } else {
+      initConnectorDeleteModal();
+    }
+  })();
+</script>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Conectores</h1>
+    <p>Gerencie as conexões de origem de dados do portal.</p>
+  </div>
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if warning %}<div class="alert alert-warning">{{ warning }}</div>{% endif %}
+{% if admin_sql %}
+<div class="modal fade" id="adminSqlModal" tabindex="-1" aria-labelledby="adminSqlModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-6" id="adminSqlModalLabel">Database destino</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">{{ warning or 'Execute o SQL abaixo como root para criar a database destino:' }}</p>
+        <pre class="mb-0 p-3" style="background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:6px;white-space:pre-wrap"><code id="adminSqlCode">{{ admin_sql }}</code></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" type="button" id="copyAdminSql">Copiar SQL</button>
+        <button class="btn btn-primary" type="button" data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if running_import %}
+  {% set import_status_key = 'running' %}
+  {% set import_status_text = 'rodando' %}
+  {% set import_status_table = running_import.table_name %}
+  {% set import_status_date = running_import.started_at|portal_dt %}
+  {% set import_status_icon = 'ti-loader ti-spin' %}
+  {% set import_metric_class = 'import-metric-running' %}
+{% elif last_run %}
+  {% set last_run_status = (last_run.status or '')|lower %}
+  {% if last_run_status in ['success', 'sucesso', 'completed', 'ok'] %}
+    {% set import_status_key = 'success' %}
+    {% set import_status_icon = 'ti-circle-check' %}
+    {% set import_metric_class = 'import-metric-success' %}
+  {% elif last_run_status in ['error', 'erro', 'failed', 'failure'] %}
+    {% set import_status_key = 'error' %}
+    {% set import_status_icon = 'ti-alert-circle' %}
+    {% set import_metric_class = 'import-metric-error' %}
+  {% else %}
+    {% set import_status_key = 'stopped' %}
+    {% set import_status_icon = 'ti-player-stop' %}
+    {% set import_metric_class = '' %}
+  {% endif %}
+  {% set import_status_text = last_run.status %}
+  {% set import_status_table = last_run.table_name %}
+  {% set import_status_date = last_run.started_at|portal_dt %}
+{% else %}
+  {% set import_status_key = 'stopped' %}
+  {% set import_status_text = 'parada' %}
+  {% set import_status_table = 'N/A' %}
+  {% set import_status_date = 'N/A' %}
+  {% set import_status_icon = 'ti-player-stop' %}
+  {% set import_metric_class = '' %}
+{% endif %}
+
+<section class="import-status-line import-status-{{ import_status_key }}">
+  <i class="ti {{ import_status_icon }}" aria-hidden="true"></i>
+  <span>Ultima importacao: {{ import_status_text }} - {{ import_status_table }} - {{ import_status_date }} - {{ imported_table_count }}/{{ active_table_count }} tabelas</span>
+</section>
+
+<section class="metric-grid import-metric-grid">
+  <div class="metric-card {{ import_metric_class }}">
+    <span>Ultima execucao</span>
+    <strong id="metric-last-run-value">{{ last_run.status if last_run else 'N/A' }}</strong>
+  </div>
+  <div class="metric-card {{ import_metric_class }}">
+    <span>Tabela</span>
+    <strong id="metric-table-value">{{ last_run.table_name if last_run else 'N/A' }}</strong>
+  </div>
+  <div class="metric-card {{ import_metric_class }}">
+    <span>Registros</span>
+    <strong id="metric-rows-value">{{ last_run.row_count if last_run else 0 }}</strong>
+  </div>
+  <div class="metric-card {{ import_metric_class }}">
+    <span>Modo</span>
+    <strong id="metric-mode-value">{{ last_run.mode if last_run else 'N/A' }}</strong>
+  </div>
+</section>
+
+<div class="mb-3">
+  <button
+    class="btn btn-outline-secondary"
+    type="button"
+    id="openNewConnector"
+    data-bs-toggle="modal"
+    data-bs-target="#modal-novo-conector"
+  >+ Novo conector</button>
+</div>
+
+<section class="connector-list">
+  <div class="row g-3" id="connector-cards-grid">
+    {% for item in configs %}
+    {% set item_last_run = last_runs_by_type.get(item.connector_type) %}
+    {% set item_whitelist = item.whitelist_tables %}
+    <div
+      class="col-lg-4 col-md-6 connector-card-shell"
+      data-connector-card="{{ item.id }}"
+      data-last-run-status="{{ item_last_run.status if item_last_run else 'N/A' }}"
+      data-last-run-table="{{ item_last_run.table_name if item_last_run else 'N/A' }}"
+      data-last-run-rows="{{ item_last_run.row_count if item_last_run else 0 }}"
+      data-last-run-mode="{{ item_last_run.mode if item_last_run else 'N/A' }}"
+    >
+      <div class="import-portal-card connector-summary-card h-100">
+        <div class="import-card-header">
+          <h2>{{ item.name or item.connector_type|upper }}</h2>
+          <span class="badge {% if item.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+            {% if item.is_active %}Ativo{% else %}Inativo{% endif %}
+          </span>
+        </div>
+        <div class="connector-summary-meta">
+          <div>{{ item.connector_type }} · {{ item.db_type }} · {{ item.host }} · {{ item.database_name }}</div>
+          <div>{{ table_counts.get(item.connector_type, 0) }} tabelas · Ultima execucao: {{ item_last_run.status if item_last_run else 'N/A' }}</div>
+          <div>
+            Modo:
+            {% if item.import_mode == 'custom' %}
+            <span class="badge badge-mode-custom">⚙ Personalizado · {{ item_whitelist|length }} tabelas</span>
+            {% else %}
+            <span class="badge badge-mode-automatic">🔄 Automático</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <button
+            class="connector-ghost-btn connector-config-toggle"
+            type="button"
+            data-connector-id="{{ item.id }}"
+            data-suggested-frequency="{{ item.suggested_frequency or '' }}"
+            data-full-schedule="{{ item.full_schedule_horarios or '' }}"
+            data-full-days="{{ item.full_schedule_dias or '' }}"
+          >Configurar</button>
+          <a class="connector-ghost-btn text-decoration-none" href="/admin/connectors?connector_id={{ item.id }}#syncTables">Tabelas</a>
+          <a class="connector-ghost-btn text-decoration-none" href="/admin/connectors?connector_id={{ item.id }}#syncHistory">Historico</a>
+          <button
+            class="connector-ghost-btn connector-mode-toggle"
+            type="button"
+            data-bs-toggle="modal"
+            data-bs-target="#modal-trocar-modo"
+            data-connector-id="{{ item.id }}"
+            data-connector-name="{{ (item.name or item.connector_type|upper)|e }}"
+            data-connector-mode="{{ item.import_mode or 'automatic' }}"
+            data-connector-whitelist='{{ item_whitelist|tojson }}'
+          >Trocar Modo</button>
+          <form method="post" action="/admin/connectors/{{ item.id }}/toggle">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="connector-toggle-btn" type="submit">{% if item.is_active %}Desativar{% else %}Ativar{% endif %}</button>
+          </form>
+          {% if not item.is_active %}
+          <button
+            class="connector-delete-btn"
+            type="button"
+            data-connector-id="{{ item.id }}"
+            data-connector-name="{{ (item.name or item.connector_type|upper)|e }}"
+          >Excluir</button>
+          {% endif %}
+          {% if item.is_active %}
+          <div class="w-100 mt-2" style="font-size:10px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:4px">
+            Executar importação
+          </div>
+          {% set is_running = item.connector_type in running_by_type %}
+          {% if is_running %}
+          <form method="post" action="/admin/connectors/{{ item.id }}/cancel" style="display:contents">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="connector-delete-btn" type="submit" title="Cancelar importação em andamento">✕ Cancelar</button>
+          </form>
+          <span class="text-muted small">Cancelamento solicitado — aguardando fim da tabela atual...</span>
+          {% else %}
+          <form method="post" action="/admin/connectors/run" style="display:contents">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="connector_id" value="{{ item.id }}">
+            <input type="hidden" name="mode" value="full">
+            <button class="connector-ghost-btn" type="submit" title="Executar carga FULL com descoberta">{% if item.import_mode == 'custom' %}FULL Personalizado{% else %}FULL{% endif %}</button>
+          </form>
+          <form method="post" action="/admin/connectors/run" style="display:contents">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="connector_id" value="{{ item.id }}">
+            <input type="hidden" name="mode" value="incremental">
+            <button class="import-primary-soft" type="submit" title="Executar importação incremental">Incremental</button>
+          </form>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% for item in configs %}
+  <section class="import-portal-card connector-inline-panel" data-connector-panel="{{ item.id }}">
+    <div class="import-card-header">
+      <h2>Conexão de origem — {{ item.name or item.connector_type|upper }}</h2>
+      <form method="post" action="/admin/connectors/test?connector_id={{ item.id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="connector-ghost-btn" type="submit">Testar conexao</button>
+      </form>
+    </div>
+    <form method="post" action="/admin/connectors/connection">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="connector_id" value="{{ item.id }}">
+          <div class="import-card-body">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label import-field-label">Nome</label>
+                <input class="form-control" name="name" value="{{ item.name or '' }}" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label import-field-label">Tipo</label>
+                <input class="form-control" name="connector_type" value="{{ item.connector_type }}" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label import-field-label">Tipo de banco</label>
+                <select class="form-select connector-db-type" name="db_type">
+                  <option value="">Selecione</option>
+                  <option value="mysql" {% if item.db_type in ['mysql', 'mariadb'] %}selected{% endif %}>MySQL / MariaDB</option>
+                  <option value="postgresql" {% if item.db_type == 'postgresql' %}selected{% endif %}>PostgreSQL</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label import-field-label">Database destino</label>
+                <input class="form-control" name="target_database" value="{{ item.target_database or '' }}" required>
+              </div>
+              <div class="col-md-7">
+                <label class="form-label import-field-label">Host</label>
+                <input class="form-control" name="host" value="{{ item.host }}" required>
+              </div>
+              <div class="col-md-5">
+                <label class="form-label import-field-label">Porta</label>
+                <input class="form-control" name="port" value="{{ item.port }}" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label import-field-label">Banco</label>
+                <input class="form-control" name="database_name" value="{{ item.database_name }}" required>
+              </div>
+              <div class="col-md-6 connector-schema-field">
+                <label class="form-label import-field-label">Schema</label>
+                <input class="form-control" name="schema_name" value="{{ item.schema_name or '' }}" placeholder="public">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label import-field-label">Prefixo de tabelas</label>
+                <input class="form-control" name="table_prefix" value="{{ item.table_prefix or '' }}" placeholder="glpi_">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label import-field-label">Usuario</label>
+                <input class="form-control" name="username" value="{{ item.username }}" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label import-field-label">Senha</label>
+                <input class="form-control" name="password" type="password" placeholder="Manter senha atual">
+              </div>
+              <div class="col-md-6 connector-initial-days-field">
+                <label class="form-label import-field-label">Janela inicial (dias)</label>
+                <input class="form-control" name="initial_days" type="number" min="1" value="{{ item.initial_days or '' }}" placeholder="90">
+                <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px">Quantos dias importar na primeira execucao de tabelas volumosas.</div>
+              </div>
+              <div class="col-md-6 form-check form-switch import-switch mt-4">
+                <input class="form-check-input" id="is_active_{{ item.id }}" name="is_active" type="checkbox" {% if item.is_active %}checked{% endif %}>
+                <label class="form-check-label" for="is_active_{{ item.id }}">Ativo</label>
+              </div>
+            </div>
+          </div>
+          <div class="import-form-actions">
+            <button class="import-primary-soft" type="submit">Salvar conexao</button>
+          </div>
+        </form>
+        <div class="connector-panel-divider"></div>
+        <form method="post" action="/admin/connectors/schedule" class="connector-schedule-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="connector_id" value="{{ item.id }}">
+          <div class="import-card-body connector-schedule-columns">
+            <div>
+              <div class="import-section-label">Agendamento incremental</div>
+              <div class="mb-3">
+                <label class="form-label import-field-label" for="suggested_frequency_{{ item.id }}">Horarios</label>
+                <input class="form-control" id="suggested_frequency_{{ item.id }}" name="suggested_frequency" value="{{ item.suggested_frequency or '' }}" placeholder="06:00,13:00,20:00">
+                {% if glpi_schedule_active %}
+                <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px">
+                  Proximas execucoes: {{ proximas_execucoes }}
+                </div>
+                {% else %}
+                <div style="font-size:11px;color:var(--color-text-danger);margin-top:4px">
+                  Agendamento pausado - execucao automatica desativada.
+                </div>
+                {% endif %}
+              </div>
+              <div class="mb-3">
+                <label class="form-label import-field-label">Dias da semana</label>
+                <div class="schedule-day-pills">
+                  {% for day_value, day_label in week_days %}
+                  <label class="schedule-day-pill">
+                    <input class="form-check-input incremental-schedule-control" type="checkbox" name="schedule_dias" value="{{ day_value }}" {% if day_value in incremental_days %}checked{% endif %}>
+                    {{ day_label }}
+                  </label>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="form-check form-switch import-switch">
+                <input class="form-check-input schedule-active-toggle" type="checkbox" id="glpi_schedule_active_{{ item.id }}" name="glpi_schedule_active" {% if glpi_schedule_active %}checked{% endif %}>
+                <label class="form-check-label schedule-active-label" for="glpi_schedule_active_{{ item.id }}">{% if glpi_schedule_active %}Ativo{% else %}Inativo{% endif %}</label>
+              </div>
+            </div>
+
+            <div>
+              <div class="import-section-label">Agendamento full (opcional)</div>
+              <div class="full-schedule-fields" style="{% if not full_schedule_active %}opacity:.55{% endif %}">
+                <div class="mb-3">
+                  <label class="form-label import-field-label" for="full_schedule_horarios_{{ item.id }}">Horarios</label>
+                  <input class="form-control full-schedule-control" id="full_schedule_horarios_{{ item.id }}" name="full_schedule_horarios" value="{{ item.full_schedule_horarios or '' }}" placeholder="" {% if not full_schedule_active %}disabled{% endif %}>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label import-field-label">Dias da semana</label>
+                  <div class="schedule-day-pills">
+                    {% for day_value, day_label in week_days %}
+                    <label class="schedule-day-pill">
+                      <input class="form-check-input full-schedule-control" type="checkbox" name="full_schedule_dias" value="{{ day_value }}" {% if day_value in full_days_by_config.get(item.id, []) %}checked{% endif %} {% if not full_schedule_active %}disabled{% endif %}>
+                      {{ day_label }}
+                    </label>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <div class="form-check form-switch import-switch mb-2">
+                <input class="form-check-input full-schedule-toggle" type="checkbox" id="full_schedule_active_{{ item.id }}" name="full_schedule_active" {% if full_schedule_active %}checked{% endif %}>
+                <label class="form-check-label full-schedule-label" for="full_schedule_active_{{ item.id }}">{% if full_schedule_active %}Ativo{% else %}Inativo{% endif %}</label>
+              </div>
+              <div style="font-size:11px;color:var(--color-text-tertiary)">
+                Se nao configurado, FULL so roda manualmente.
+              </div>
+            </div>
+          </div>
+          <div class="import-form-actions">
+            <button class="import-primary-soft" type="submit">Salvar agendamento</button>
+          </div>
+        </form>
+  </section>
+  {% endfor %}
+</section>
+
+<div class="modal fade" id="modal-novo-conector" tabindex="-1" data-bs-backdrop="static" aria-labelledby="modalNovoConectorLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalNovoConectorLabel">
+          Novo conector
+          <span class="text-muted fs-6 ms-2" id="modal-etapa-label">Etapa 1 de 3</span>
+        </h5>
+        <button type="button" class="btn-close" id="modal-novo-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body pb-0">
+        <div class="d-flex gap-2 mb-4" id="modal-steps">
+          <div class="step-indicator active" id="step-dot-1">1</div>
+          <div class="step-line"></div>
+          <div class="step-indicator" id="step-dot-2">2</div>
+          <div class="step-line"></div>
+          <div class="step-indicator" id="step-dot-3">3</div>
+        </div>
+      </div>
+      <div class="modal-body pt-0" id="modal-etapa-conteudo"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modal-trocar-modo" tabindex="-1" data-bs-backdrop="static" aria-labelledby="modalTrocarModoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTrocarModoLabel">Modo de importação</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="modal-trocar-conteudo"></div>
+      <div class="modal-footer" id="modal-trocar-footer"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modal-excluir-conector" tabindex="-1"
+     data-bs-backdrop="static" aria-labelledby="modalExcluirLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalExcluirLabel">Excluir conector</h5>
+        <button type="button" class="btn-close"
+                data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="modal-excluir-body">
+        <div class="d-flex justify-content-center py-3">
+          <span class="spinner-border"></span>
+        </div>
+      </div>
+      <div class="modal-footer" id="modal-excluir-footer">
+        <button type="button" class="btn btn-outline-secondary"
+                data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    document.querySelectorAll('.connector-schedule-form').forEach((scheduleForm) => {
+      const fullToggle = scheduleForm.querySelector('.full-schedule-toggle');
+      const fullLabel = scheduleForm.querySelector('.full-schedule-label');
+      const fullFields = scheduleForm.querySelector('.full-schedule-fields');
+      const fullControls = scheduleForm.querySelectorAll('.full-schedule-control');
+      const scheduleToggle = scheduleForm.querySelector('.schedule-active-toggle');
+      const scheduleLabel = scheduleForm.querySelector('.schedule-active-label');
+      const incrementalControls = scheduleForm.querySelectorAll('.incremental-schedule-control');
+
+      function syncFullState() {
+        if (!fullToggle || !fullLabel || !fullFields) {
+          return;
+        }
+      const active = fullToggle.checked;
+      fullLabel.textContent = active ? 'Ativo' : 'Inativo';
+      fullFields.style.opacity = active ? '1' : '.55';
+      fullControls.forEach((control) => {
+        control.disabled = !active;
+      });
+      }
+
+      function syncIncrementalState() {
+        if (!scheduleToggle || !scheduleLabel) {
+          return;
+        }
+      const active = scheduleToggle.checked;
+      scheduleLabel.textContent = active ? 'Ativo' : 'Inativo';
+      incrementalControls.forEach((control) => {
+        control.disabled = !active;
+      });
+      }
+
+      fullToggle?.addEventListener('change', syncFullState);
+      scheduleToggle?.addEventListener('change', syncIncrementalState);
+      scheduleForm.addEventListener('submit', () => {
+        fullControls.forEach((control) => {
+          control.disabled = false;
+        });
+        incrementalControls.forEach((control) => {
+          control.disabled = false;
+        });
+      });
+      syncFullState();
+      syncIncrementalState();
+    });
+  })();
+
+  (function () {
+    const presets = {
+      custom: {
+        connector_type: '',
+        db_type: '',
+        port: '',
+        schema_name: '',
+        table_prefix: '',
+        target_database: '',
+        initial_days: '',
+        suggested_frequency: '',
+        full_schedule_horarios: ''
+      },
+      glpi: {
+        connector_type: 'glpi',
+        db_type: 'mysql',
+        port: '3306',
+        schema_name: '',
+        table_prefix: 'glpi_',
+        target_database: 'glpi_local',
+        initial_days: '',
+        suggested_frequency: '08:00,20:00',
+        full_schedule_horarios: '02:00'
+      },
+      zabbix: {
+        connector_type: 'zabbix',
+        db_type: 'postgresql',
+        port: '5432',
+        schema_name: 'public',
+        table_prefix: '',
+        target_database: 'zabbix_local',
+        initial_days: '90',
+        suggested_frequency: '08:00,20:00',
+        full_schedule_horarios: '02:00'
+      },
+      redmine: {
+        connector_type: 'redmine',
+        db_type: 'mysql',
+        port: '3306',
+        schema_name: '',
+        table_prefix: '',
+        target_database: 'redmine_local',
+        initial_days: '',
+        suggested_frequency: '08:00,20:00',
+        full_schedule_horarios: '02:00'
+      }
+    };
+
+    function syncConnectorFields(form) {
+      const dbType = form.querySelector('.connector-db-type');
+      const isPostgres = Boolean(dbType && dbType.value === 'postgresql');
+      form.querySelectorAll('.connector-schema-field').forEach((field) => {
+        field.style.display = isPostgres ? '' : 'none';
+      });
+      form.querySelectorAll('.connector-initial-days-field').forEach((field) => {
+        field.style.display = isPostgres ? '' : 'none';
+      });
+    }
+
+    function closeConnectorPanels() {
+      document.querySelectorAll('.connector-inline-panel').forEach((panel) => {
+        panel.classList.remove('is-open');
+      });
+      document.querySelectorAll('.connector-card-shell').forEach((card) => {
+        card.classList.remove('is-expanded');
+      });
+    }
+	
+    function selectConnectorCard(cardEl) {
+      const connectorId = cardEl.dataset.connectorCard;
+      if (!connectorId) {
+        return;
+      }
+
+      const hash = window.location.hash;
+      const keepHash = (hash === '#syncTables' || hash === '#syncHistory') ? hash : '';
+
+      window.location.href = `/admin/connectors?connector_id=${encodeURIComponent(connectorId)}${keepHash}`;
+    }
+	
+    function showDetailSectionFromHash() {
+      const hash = window.location.hash;
+      if (hash === '#syncTables' || hash === '#syncHistory') {
+        const section = document.querySelector(hash);
+        if (section) {
+          section.style.display = '';
+          section.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+    }
+
+    function bindConnectorForm(form) {
+      if (!form) {
+        return;
+      }
+      const dbType = form.querySelector('.connector-db-type');
+      if (!dbType) {
+        return;
+      }
+      dbType.addEventListener('change', () => syncConnectorFields(form));
+      syncConnectorFields(form);
+    }
+
+    function bindPresetSelect(select) {
+      if (!select) {
+        return;
+      }
+      select.addEventListener('change', () => applyPresetToForm(select, true));
+    }
+
+    function applyPresetToForm(select, applyCustom = false) {
+      if (!select) {
+        return;
+      }
+      if (select.value === 'custom' && !applyCustom) {
+        return;
+      }
+      const values = presets[select.value];
+      if (!values) {
+        return;
+      }
+      const form = select.closest('form');
+      Object.entries(values).forEach(([name, value]) => {
+        const field = form.querySelector(`[name="${name}"]`);
+        if (field) {
+          field.value = value;
+        }
+      });
+      syncConnectorFields(form);
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token }}';
+    const modalNovoEl = document.getElementById('modal-novo-conector');
+    const modalNovo = modalNovoEl && window.bootstrap ? new bootstrap.Modal(modalNovoEl) : null;
+    const modalTrocarEl = document.getElementById('modal-trocar-modo');
+    const modalTrocar = modalTrocarEl && window.bootstrap ? new bootstrap.Modal(modalTrocarEl) : null;
+    const novoConteudo = document.getElementById('modal-etapa-conteudo');
+    const novoFooter = document.getElementById('modal-footer');
+    const novoEtapaLabel = document.getElementById('modal-etapa-label');
+    const novoClose = document.getElementById('modal-novo-close');
+    const trocarConteudo = document.getElementById('modal-trocar-conteudo');
+    const trocarFooter = document.getElementById('modal-trocar-footer');
+    const trocarTitulo = document.getElementById('modalTrocarModoLabel');
+    const novoState = { etapa_atual: 1, modo_selecionado: null, tabelas_selecionadas: [], credenciais: {}, tabelas: [], carregando_tabelas: false };
+    const trocarState = { etapa_atual: 'mode', connector_id: null, connector_name: '', modo_atual: 'automatic', modo_selecionado: null, whitelist_atual: [], tabelas_selecionadas: [], tabelas: [], carregando_tabelas: false };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (typeof bootstrap === 'undefined') {
+        console.error('Bootstrap JS não carregado. Modais não funcionarão.');
+        const aviso = document.createElement('div');
+        aviso.className = 'alert alert-warning m-3';
+        aviso.textContent = 'Aviso: alguns recursos da página podem não funcionar corretamente. Verifique sua conexão com a internet ou contate o administrador.';
+        document.querySelector('.container, main, body')?.prepend(aviso);
+      }
+    });
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    }
+
+    function formatNumber(value) {
+      return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(Number(value || 0));
+    }
+
+    function formTemplate() {
+      return `
+        <form class="connector-modal-form" id="modalConnectorForm">
+          <input type="hidden" name="csrf_token" value="${csrfToken}">
+          <div class="row g-3">
+            <div class="col-md-4"><label class="form-label import-field-label" for="modal_system_preset">Tipo de sistema</label><select class="form-select connector-preset" id="modal_system_preset"><option value="custom">Personalizado</option><option value="glpi">GLPI</option><option value="zabbix">Zabbix</option><option value="redmine">Redmine</option></select></div>
+            <div class="col-md-4"><label class="form-label import-field-label">Nome</label><input class="form-control" name="name" placeholder="GLPI Producao" required></div>
+            <div class="col-md-4"><label class="form-label import-field-label">Tipo</label><input class="form-control" name="connector_type" placeholder="glpi, zabbix, redmine, mysql, postgresql, custom" required></div>
+            <div class="col-md-4"><label class="form-label import-field-label">Tipo de banco</label><select class="form-select connector-db-type" name="db_type" required><option value="">Selecione</option><option value="mysql">MySQL / MariaDB</option><option value="postgresql">PostgreSQL</option></select></div>
+            <div class="col-md-4"><label class="form-label import-field-label">Database destino</label><input class="form-control" name="target_database" placeholder="glpi_local"></div>
+            <div class="col-md-4"><label class="form-label import-field-label">Host</label><input class="form-control" name="host" required></div>
+            <div class="col-md-2"><label class="form-label import-field-label">Porta</label><input class="form-control" name="port" required></div>
+            <div class="col-md-4"><label class="form-label import-field-label">Banco</label><input class="form-control" name="database_name" required></div>
+            <div class="col-md-3 connector-schema-field"><label class="form-label import-field-label">Schema</label><input class="form-control" name="schema_name" placeholder="public"></div>
+            <div class="col-md-3"><label class="form-label import-field-label">Prefixo de tabelas</label><input class="form-control" name="table_prefix" placeholder="glpi_"></div>
+            <div class="col-md-3"><label class="form-label import-field-label">Usuario</label><input class="form-control" name="username" required></div>
+            <div class="col-md-3"><label class="form-label import-field-label">Senha</label><input class="form-control" name="password" type="password" required></div>
+            <div class="col-md-3 connector-initial-days-field"><label class="form-label import-field-label">Janela inicial (dias)</label><input class="form-control" name="initial_days" type="number" min="1" placeholder="90"><div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px">Historico inicial para tabelas volumosas.</div></div>
+            <div class="col-md-3"><label class="form-label import-field-label">Incremental</label><input class="form-control" name="suggested_frequency" placeholder="08:00,20:00"></div>
+            <div class="col-md-3"><label class="form-label import-field-label">Full</label><input class="form-control" name="full_schedule_horarios" placeholder="02:00"></div>
+            <div class="col-md-3 form-check form-switch import-switch mt-4"><input class="form-check-input" id="modal_new_is_active" name="is_active" type="checkbox" checked><label class="form-check-label" for="modal_new_is_active">Ativo</label></div>
+          </div>
+          <div class="mt-3" id="modal-test-result"></div>
+        </form>`;
+    }
+
+    function modeTemplate(selected) {
+      return `<div><h2 class="fs-6 mb-3">Como deseja importar os dados?</h2><div class="row g-3"><div class="col-md-6"><div class="mode-card ${selected === 'automatic' ? 'selected' : ''}" data-mode="automatic" role="button" tabindex="0"><strong>🔄 Automático</strong><p>Importa todas as tabelas da origem. Novas tabelas são detectadas automaticamente.</p></div></div><div class="col-md-6"><div class="mode-card ${selected === 'custom' ? 'selected' : ''}" data-mode="custom" role="button" tabindex="0"><strong>⚙ Personalizado</strong><p>Selecione quais tabelas importar. Novas tabelas são ignoradas até adição manual.</p></div></div></div></div>`;
+    }
+
+    function tableTemplate(tables, selectedTables, loading, errorMessage) {
+      if (loading) {
+        return `<h2 class="fs-6 mb-1">Selecione as tabelas para importar</h2><p class="text-muted mb-3">Conectando à origem...</p><div class="d-flex align-items-center gap-2"><span class="spinner-border spinner-border-sm"></span><span>Carregando tabelas</span></div>`;
+      }
+      if (errorMessage) {
+        return `<h2 class="fs-6 mb-1">Selecione as tabelas para importar</h2><div class="alert alert-danger mb-0">Erro: ${escapeHtml(errorMessage)}</div>`;
+      }
+      const selectedSet = new Set(selectedTables);
+      const allSelected = tables.length > 0 && tables.every((table) => selectedSet.has(table.name));
+      const rows = tables.map((table) => `<tr class="table-select-row ${table.is_large ? 'table-row-large' : ''} ${selectedSet.has(table.name) ? 'table-row-selected' : ''}" data-table-name="${escapeHtml(table.name)}"><td><input class="form-check-input table-select-check" type="checkbox" value="${escapeHtml(table.name)}" ${selectedSet.has(table.name) ? 'checked' : ''}></td><td>${escapeHtml(table.name)}</td><td>${formatNumber(table.rows)}</td><td>${formatNumber(table.size_mb)}</td><td>${table.is_large ? '<span title="Tabela volumosa">⚠</span>' : ''}</td></tr>`).join('');
+      return `<h2 class="fs-6 mb-1">Selecione as tabelas para importar</h2><p class="text-muted mb-3">Tabela volumosa — importação exige janela inicial configurada.</p><div style="margin-bottom:8px"><input type="text" id="table-search-input" class="form-control form-control-sm" placeholder="Buscar tabela..." autocomplete="off"></div><div id="table-search-counter" style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:4px;min-height:16px"></div><div class="table-select-wrap" id="table-list-container"><table class="table table-sm align-middle"><thead><tr><th style="width:36px"><input class="form-check-input" type="checkbox" id="selectAllTables" ${allSelected ? 'checked' : ''}></th><th>Tabela</th><th>Linhas</th><th>MB</th><th style="width:40px">⚠</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="text-muted">Nenhuma tabela encontrada.</td></tr>'}</tbody></table></div><div class="table-selection-footer"><span id="selectedTableCount">${selectedSet.size} tabelas selecionadas</span></div>`;
+    }
+
+    function payloadFromForm() {
+      const form = document.getElementById('modalConnectorForm');
+      const payload = {};
+      if (!form) {
+        return payload;
+      }
+      new FormData(form).forEach((value, key) => { payload[key] = value; });
+      payload.is_active = form.querySelector('[name="is_active"]')?.checked ? 'on' : '';
+      return payload;
+    }
+
+    function validateCredentials() {
+      const form = document.getElementById('modalConnectorForm');
+      let valid = true;
+      ['connector_type', 'db_type', 'host', 'port', 'database_name', 'username', 'password'].forEach((name) => {
+        const field = form?.querySelector(`[name="${name}"]`);
+        const missing = !field || !String(field.value || '').trim();
+        field?.classList.toggle('is-invalid', missing);
+        if (missing) {
+          valid = false;
+        }
+      });
+      return valid;
+    }
+
+    async function jsonPost(url, payload) {
+      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ ...payload, csrf_token: csrfToken }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) {
+        throw new Error(data.error || 'Falha na requisicao.');
+      }
+      return data;
+    }
+
+    function formDataFromPayload(payload, importMode, whitelist) {
+      const body = new URLSearchParams();
+      Object.entries(payload).forEach(([key, value]) => body.set(key, value ?? ''));
+      body.set('csrf_token', csrfToken);
+      body.set('import_mode', importMode);
+      if (importMode === 'custom') {
+        body.set('table_whitelist', JSON.stringify(whitelist || []));
+      }
+      return body;
+    }
+
+    async function createConnector(payload, importMode, whitelist) {
+      const response = await fetch('/admin/connectors/new', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: formDataFromPayload(payload, importMode, whitelist) });
+      const url = new URL(response.url || '/admin/connectors', window.location.origin);
+      const connectorId = url.searchParams.get('connector_id');
+      if (!connectorId) {
+        throw new Error('Conector criado, mas o id nao foi retornado pelo redirecionamento.');
+      }
+      return { connectorId, redirectUrl: url.toString() };
+    }
+
+    function bindModeCards(root, state, renderFooter) {
+      root.querySelectorAll('.mode-card').forEach((card) => {
+        const selectCard = () => {
+          state.modo_selecionado = card.dataset.mode;
+          root.querySelectorAll('.mode-card').forEach((item) => item.classList.toggle('selected', item === card));
+          renderFooter();
+        };
+        card.addEventListener('click', selectCard);
+        card.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            selectCard();
+          }
+        });
+      });
+    }
+
+    function bindTableSelection(root, state, renderFooter) {
+      const container = root.querySelector('#table-list-container');
+      const searchInput = root.querySelector('#table-search-input');
+      const filterTables = () => {
+        const termo = (searchInput?.value || '').toLowerCase().trim();
+        let visiveis = 0;
+        root.querySelectorAll('.table-select-row').forEach((row) => {
+          const nome = (row.dataset.tableName || '').toLowerCase();
+          const checked = row.querySelector('.table-select-check')?.checked;
+          const visivel = !termo || nome.includes(termo) || checked;
+          row.style.display = visivel ? '' : 'none';
+          if (visivel) visiveis += 1;
+        });
+        const counter = root.querySelector('#table-search-counter');
+        if (counter) {
+          counter.textContent = termo ? `${visiveis} tabela(s) encontrada(s)` : '';
+        }
+      };
+      const syncCount = () => {
+        state.tabelas_selecionadas = Array.from(root.querySelectorAll('.table-select-check:checked')).map((item) => item.value);
+        root.querySelectorAll('.table-select-row').forEach((row) => {
+          row.classList.toggle('table-row-selected', Boolean(row.querySelector('.table-select-check')?.checked));
+        });
+        const counter = root.querySelector('#selectedTableCount');
+        if (counter) {
+          counter.textContent = `${state.tabelas_selecionadas.length} tabelas selecionadas`;
+        }
+        const checkboxes = Array.from(root.querySelectorAll('.table-select-check'));
+        const selectAll = root.querySelector('#selectAllTables');
+        if (selectAll) {
+          selectAll.checked = checkboxes.length > 0 && checkboxes.every((checkbox) => checkbox.checked);
+          selectAll.indeterminate = checkboxes.some((checkbox) => checkbox.checked) && !selectAll.checked;
+        }
+        filterTables();
+        renderFooter();
+      };
+      container?.addEventListener('change', (event) => {
+        if (event.target.matches('#selectAllTables')) {
+          root.querySelectorAll('.table-select-check').forEach((checkbox) => { checkbox.checked = event.target.checked; });
+          syncCount();
+        } else if (event.target.matches('.table-select-check')) {
+          syncCount();
+        }
+      });
+      searchInput?.addEventListener('input', filterTables);
+    }
+
+    function updateStepDots(step) {
+      [1, 2, 3].forEach((number) => {
+        const dot = document.getElementById(`step-dot-${number}`);
+        dot?.classList.toggle('active', number === step);
+        dot?.classList.toggle('done', number < step);
+      });
+      if (novoEtapaLabel) {
+        novoEtapaLabel.textContent = `Etapa ${step} de 3`;
+      }
+      if (novoClose) {
+        novoClose.style.display = step === 1 ? '' : 'none';
+      }
+    }
+
+    function renderNovoModeFooter() {
+      novoFooter.innerHTML = `<button class="connector-ghost-btn" type="button" id="novoVoltar">← Voltar</button><button class="btn btn-outline-secondary" type="button" id="novoCancelar">Cancelar</button><button class="btn btn-primary" type="button" id="novoProximo" ${novoState.modo_selecionado ? '' : 'disabled'}>Próximo →</button>`;
+      document.getElementById('novoVoltar')?.addEventListener('click', () => irParaEtapa(1));
+      document.getElementById('novoCancelar')?.addEventListener('click', fecharNovoModal);
+      document.getElementById('novoProximo')?.addEventListener('click', avancarNovo);
+    }
+
+    function renderNovoTabelaStep(errorMessage) {
+      novoConteudo.innerHTML = tableTemplate(novoState.tabelas, novoState.tabelas_selecionadas, novoState.carregando_tabelas, errorMessage);
+      novoFooter.innerHTML = `<button class="connector-ghost-btn" type="button" id="novoVoltar">← Voltar</button><button class="btn btn-outline-secondary" type="button" id="novoCancelar">Cancelar</button><button class="btn btn-primary" type="button" id="novoImportar" ${novoState.tabelas_selecionadas.length ? '' : 'disabled'}>Importar ↓</button>`;
+      document.getElementById('novoVoltar')?.addEventListener('click', () => irParaEtapa(2));
+      document.getElementById('novoCancelar')?.addEventListener('click', fecharNovoModal);
+      document.getElementById('novoImportar')?.addEventListener('click', importarNovoCustom);
+      bindTableSelection(novoConteudo, novoState, () => {
+        const importButton = document.getElementById('novoImportar');
+        if (importButton) {
+          importButton.disabled = novoState.tabelas_selecionadas.length === 0;
+        }
+      });
+    }
+
+    function irParaEtapa(step) {
+      novoState.etapa_atual = step;
+      updateStepDots(step);
+      if (step === 1) {
+        novoConteudo.innerHTML = formTemplate();
+        const form = document.getElementById('modalConnectorForm');
+        bindConnectorForm(form);
+        bindPresetSelect(form.querySelector('.connector-preset'));
+        novoFooter.innerHTML = `<button class="btn btn-outline-secondary" type="button" id="novoCancelar">Cancelar</button><button class="connector-ghost-btn" type="button" id="novoTestar">Testar Conector</button><button class="btn btn-primary" type="button" id="novoProximo">Próximo →</button>`;
+        document.getElementById('novoCancelar')?.addEventListener('click', fecharNovoModal);
+        document.getElementById('novoTestar')?.addEventListener('click', testarNovoConector);
+        document.getElementById('novoProximo')?.addEventListener('click', avancarNovo);
+      } else if (step === 2) {
+        novoConteudo.innerHTML = modeTemplate(novoState.modo_selecionado);
+        renderNovoModeFooter();
+        bindModeCards(novoConteudo, novoState, renderNovoModeFooter);
+      } else {
+        renderNovoTabelaStep();
+        const searchInput = document.getElementById('table-search-input');
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.dispatchEvent(new Event('input'));
+        }
+      }
+    }
+
+    async function testarNovoConector() {
+      const result = document.getElementById('modal-test-result');
+      if (!validateCredentials()) {
+        if (result) {
+          result.innerHTML = '<div class="alert alert-danger py-2 mb-0">Erro: preencha os campos obrigatórios.</div>';
+        }
+        return;
+      }
+      if (result) {
+        result.innerHTML = '<div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Testando conexão...</div>';
+      }
+      try {
+        await jsonPost('/admin/connectors/discover', payloadFromForm());
+        if (result) {
+          result.innerHTML = '<div class="alert alert-success py-2 mb-0">✅ Conexão estabelecida com sucesso.</div>';
+        }
+      } catch (error) {
+        if (result) {
+          result.innerHTML = `<div class="alert alert-danger py-2 mb-0">❌ Erro: ${escapeHtml(error.message)}</div>`;
+        }
+      }
+    }
+
+    async function avancarNovo() {
+      if (novoState.etapa_atual === 1) {
+        if (!validateCredentials()) {
+          return;
+        }
+        const payload = payloadFromForm();
+        if (!payload.connector_type || !payload.db_type) {
+          console.error('[ArcReports] payload invalido:', payload);
+          return;
+        }
+        novoState.credenciais = payload;
+        irParaEtapa(2);
+        return;
+      }
+      if (novoState.etapa_atual === 2 && novoState.modo_selecionado === 'automatic') {
+        try {
+          const created = await createConnector(novoState.credenciais, 'automatic', []);
+          window.location.href = created.redirectUrl;
+        } catch (error) {
+          novoConteudo.insertAdjacentHTML('beforeend', `<div class="alert alert-danger mt-3">Erro: ${escapeHtml(error.message)}</div>`);
+        }
+        return;
+      }
+      if (novoState.etapa_atual === 2 && novoState.modo_selecionado === 'custom') {
+        novoState.carregando_tabelas = true;
+        irParaEtapa(3);
+        try {
+          const data = await jsonPost('/admin/connectors/discover', novoState.credenciais);
+          novoState.tabelas = data.tables || [];
+          novoState.tabelas_selecionadas = [];
+          novoState.carregando_tabelas = false;
+          renderNovoTabelaStep();
+        } catch (error) {
+          novoState.carregando_tabelas = false;
+          renderNovoTabelaStep(error.message);
+        }
+      }
+    }
+
+    async function importarNovoCustom() {
+      try {
+        const created = await createConnector(novoState.credenciais, 'custom', novoState.tabelas_selecionadas);
+        await jsonPost(`/admin/connectors/${created.connectorId}/whitelist`, { import_mode: 'custom', tables: novoState.tabelas_selecionadas });
+        window.location.href = `/admin/connectors?connector_id=${encodeURIComponent(created.connectorId)}&message=${encodeURIComponent('Conector criado com whitelist salva.')}`;
+      } catch (error) {
+        novoConteudo.insertAdjacentHTML('beforeend', `<div class="alert alert-danger mt-3">Erro: ${escapeHtml(error.message)}</div>`);
+      }
+    }
+
+    function fecharNovoModal() {
+      Object.assign(novoState, { etapa_atual: 1, modo_selecionado: null, tabelas_selecionadas: [], credenciais: {}, tabelas: [], carregando_tabelas: false });
+      modalNovo?.hide();
+      if (novoConteudo) {
+        novoConteudo.innerHTML = '';
+      }
+      if (novoFooter) {
+        novoFooter.innerHTML = '';
+      }
+    }
+
+    function abrirTrocarModo(button, shouldShow = true) {
+      trocarState.connector_id = button.dataset.connectorId;
+      trocarState.connector_name = button.dataset.connectorName || '';
+      trocarState.modo_atual = button.dataset.connectorMode || 'automatic';
+      trocarState.modo_selecionado = trocarState.modo_atual;
+      try {
+        trocarState.whitelist_atual = JSON.parse(button.dataset.connectorWhitelist || '[]');
+      } catch (error) {
+        trocarState.whitelist_atual = [];
+      }
+      trocarState.tabelas_selecionadas = [...trocarState.whitelist_atual];
+      trocarState.tabelas = [];
+      trocarState.etapa_atual = 'mode';
+      if (trocarTitulo) {
+        trocarTitulo.textContent = `Modo de importação — ${trocarState.connector_name}`;
+      }
+      renderTrocarModo();
+      if (shouldShow) {
+        modalTrocar?.show();
+      }
+    }
+
+    function renderTrocarModo() {
+      trocarConteudo.innerHTML = modeTemplate(trocarState.modo_selecionado);
+      renderTrocarFooter();
+      bindModeCards(trocarConteudo, trocarState, renderTrocarFooter);
+    }
+
+    function renderTrocarFooter() {
+      if (trocarState.etapa_atual === 'tables') {
+        trocarFooter.innerHTML = `<button class="connector-ghost-btn" type="button" id="trocarVoltar">← Voltar</button><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary" type="button" id="trocarSalvar" ${trocarState.tabelas_selecionadas.length ? '' : 'disabled'}>Salvar modo</button>`;
+        document.getElementById('trocarVoltar')?.addEventListener('click', () => { trocarState.etapa_atual = 'mode'; renderTrocarModo(); });
+        document.getElementById('trocarSalvar')?.addEventListener('click', salvarTrocarModoCustom);
+        return;
+      }
+      trocarFooter.innerHTML = `<button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary" type="button" id="trocarProximo" ${trocarState.modo_selecionado ? '' : 'disabled'}>Próximo →</button>`;
+      document.getElementById('trocarProximo')?.addEventListener('click', avancarTrocarModo);
+    }
+
+    async function avancarTrocarModo() {
+      if (trocarState.modo_selecionado === 'automatic') {
+        try {
+          await jsonPost(`/admin/connectors/${trocarState.connector_id}/whitelist`, { import_mode: 'automatic', tables: [] });
+          window.location.href = `/admin/connectors?connector_id=${encodeURIComponent(trocarState.connector_id)}&message=${encodeURIComponent('Modo alterado para automatico.')}`;
+        } catch (error) {
+          trocarConteudo.insertAdjacentHTML('beforeend', `<div class="alert alert-danger mt-3">Erro: ${escapeHtml(error.message)}</div>`);
+        }
+        return;
+      }
+      trocarState.etapa_atual = 'tables';
+      trocarState.carregando_tabelas = true;
+      renderTrocarTabelas();
+      try {
+        const data = await jsonPost('/admin/connectors/discover', { connector_id: trocarState.connector_id });
+        trocarState.tabelas = data.tables || [];
+        const fromBackend = trocarState.tabelas.filter((table) => table.in_whitelist).map((table) => table.name);
+        trocarState.tabelas_selecionadas = fromBackend.length ? fromBackend : [...trocarState.whitelist_atual];
+        trocarState.carregando_tabelas = false;
+        renderTrocarTabelas();
+      } catch (error) {
+        trocarState.carregando_tabelas = false;
+        renderTrocarTabelas(error.message);
+      }
+    }
+
+    function renderTrocarTabelas(errorMessage) {
+      trocarConteudo.innerHTML = tableTemplate(trocarState.tabelas, trocarState.tabelas_selecionadas, trocarState.carregando_tabelas, errorMessage);
+      trocarState.etapa_atual = 'tables';
+      renderTrocarFooter();
+      bindTableSelection(trocarConteudo, trocarState, () => renderTrocarTabelas());
+    }
+
+    async function salvarTrocarModoCustom() {
+      try {
+        await jsonPost(`/admin/connectors/${trocarState.connector_id}/whitelist`, { import_mode: 'custom', tables: trocarState.tabelas_selecionadas });
+        window.location.href = `/admin/connectors?connector_id=${encodeURIComponent(trocarState.connector_id)}&message=${encodeURIComponent('Modo personalizado salvo.')}`;
+      } catch (error) {
+        trocarConteudo.insertAdjacentHTML('beforeend', `<div class="alert alert-danger mt-3">Erro: ${escapeHtml(error.message)}</div>`);
+      }
+    }
+
+    document.querySelectorAll('form').forEach(bindConnectorForm);
+    document.querySelectorAll('.connector-preset').forEach(bindPresetSelect);
+    document.querySelectorAll('.connector-card-shell').forEach((card) => {
+      card.addEventListener('click', (event) => {
+        if (event.target.closest('button, a, form, input, select')) {
+          return;
+        }
+        selectConnectorCard(card);
+      });
+    });
+	
+    const initialCard = document.querySelector('[data-connector-card="{{ config.id }}"]');
+    if (initialCard) {
+      initialCard.classList.add('is-selected');
+    }
+
+    document.querySelectorAll('.connector-config-toggle').forEach((button) => {
+      button.addEventListener('click', () => {
+        const connectorId = button.dataset.connectorId;
+        const panel = document.querySelector(`[data-connector-panel="${connectorId}"]`);
+        const card = document.querySelector(`[data-connector-card="${connectorId}"]`);
+        const wasOpen = panel && panel.classList.contains('is-open');
+        closeConnectorPanels();
+        if (!wasOpen && panel) {
+          panel.classList.add('is-open');
+          card?.classList.add('is-expanded');
+        }
+      });
+    });
+
+    const openNewConnector = document.getElementById('openNewConnector');
+    openNewConnector?.addEventListener('click', () => {
+      closeConnectorPanels();
+      irParaEtapa(1);
+      modalNovo?.show();
+    });
+    modalNovoEl?.addEventListener('show.bs.modal', () => {
+      if (!novoConteudo?.innerHTML.trim()) {
+        closeConnectorPanels();
+        irParaEtapa(1);
+      }
+    });
+
+    document.querySelectorAll('.connector-mode-toggle').forEach((button) => {
+      button.addEventListener('click', () => abrirTrocarModo(button));
+    });
+    modalTrocarEl?.addEventListener('show.bs.modal', (event) => {
+      const button = event.relatedTarget;
+      if (button) {
+        abrirTrocarModo(button, false);
+      }
+    });
+
+    const modalEl = document.getElementById('adminSqlModal');
+    if (modalEl && window.bootstrap) {
+      new bootstrap.Modal(modalEl).show();
+    }
+    const copyButton = document.getElementById('copyAdminSql');
+    const sqlCode = document.getElementById('adminSqlCode');
+    if (copyButton && sqlCode && navigator.clipboard) {
+      copyButton.addEventListener('click', () => navigator.clipboard.writeText(sqlCode.textContent || ''));
+    }
+    document.addEventListener('DOMContentLoaded', showDetailSectionFromHash);
+    window.addEventListener('hashchange', showDetailSectionFromHash);
+  })();
+</script>
+
+<section class="panel connector-detail-section" id="syncTables" style="display:none">
+  <div class="panel-header">
+    <h2>Tabelas sincronizadas</h2>
+  </div>
+  <form method="post" action="/admin/connectors/tables">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="connector_id" value="{{ config.id }}">
+    {% if tables %}
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Tabela</th>
+            <th>Ativo</th>
+            <th>Tipo</th>
+            <th>Coluna incremental</th>
+            <th>Ultima execucao</th>
+            <th>Registros</th>
+            <th>Ultimo erro</th>
+            <th>Sucesso</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for table in tables %}
+          <tr>
+            <td><code>{{ table.table_name }}</code></td>
+            <td>
+              <input class="form-check-input" type="checkbox" name="active_{{ table.id }}" {% if table.is_active %}checked{% endif %}>
+            </td>
+            <td>
+              <select class="form-select form-select-sm" name="load_type_{{ table.id }}">
+                <option value="full" {% if table.load_type == 'full' %}selected{% endif %}>full</option>
+                <option value="incremental" {% if table.load_type == 'incremental' %}selected{% endif %}>incremental</option>
+              </select>
+            </td>
+            <td><input class="form-control form-control-sm" name="incremental_column_{{ table.id }}" value="{{ table.incremental_column or '' }}" placeholder="date_mod"></td>
+            <td>{{ table.last_run_at|portal_dt }}</td>
+            <td>{{ table.row_count }}</td>
+            <td class="text-danger small">{{ table.last_error or '-' }}</td>
+            <td>{{ table.last_success_at|portal_dt }}</td>
+            <td>
+              <div class="d-flex gap-1">
+                <button form="run-full-{{ table.id }}" type="submit" style="background:#FAEEDA;border:0.5px solid #EF9F27;color:#854F0B;font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;min-width:44px;text-align:center">FULL</button>
+                <button form="run-inc-{{ table.id }}" type="submit" style="background:#E6F1FB;border:0.5px solid #85B7EB;color:#185FA5;font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;min-width:44px;text-align:center">INC</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+          <tr>
+            <td><input class="form-control form-control-sm" name="new_table_name" placeholder="glpi_nova_tabela"></td>
+            <td>Nova</td>
+            <td>
+              <select class="form-select form-select-sm" name="new_load_type">
+                <option value="incremental">incremental</option>
+                <option value="full">full</option>
+              </select>
+            </td>
+            <td><input class="form-control form-control-sm" name="new_incremental_column" placeholder="date_mod, date_creation, date ou id"></td>
+            <td colspan="5"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+      <div style="font-size:12px;color:var(--color-text-tertiary)">
+        Mostrando {{ table_page_start }}-{{ table_page_end }} de {{ total_tables }} tabelas
+      </div>
+      <nav aria-label="Paginação de tabelas sincronizadas">
+        <div class="d-flex flex-wrap gap-1">
+          {% if prev_page_url %}
+          <a class="connector-ghost-btn text-decoration-none" href="{{ prev_page_url }}#syncTables">← Anterior</a>
+          {% else %}
+          <span class="connector-ghost-btn" style="opacity:.55;pointer-events:none">← Anterior</span>
+          {% endif %}
+          {% for page_number, page_url in pagination_links %}
+          <a
+            class="connector-ghost-btn text-decoration-none {% if page_number == page %}active{% endif %}"
+            href="{{ page_url }}#syncTables"
+            style="{% if page_number == page %}border-color:#378ADD;color:#185FA5;background:#E6F1FB{% endif %}"
+          >{{ page_number }}</a>
+          {% endfor %}
+          {% if next_page_url %}
+          <a class="connector-ghost-btn text-decoration-none" href="{{ next_page_url }}#syncTables">Próxima →</a>
+          {% else %}
+          <span class="connector-ghost-btn" style="opacity:.55;pointer-events:none">Próxima →</span>
+          {% endif %}
+        </div>
+      </nav>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Salvar tabelas</button>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:2rem;text-align:center;color:var(--color-text-tertiary)">
+      <i class="ti ti-table-off" style="font-size:32px;display:block;margin-bottom:8px"></i>
+      Nenhuma tabela sincronizada para este conector.
+    </div>
+    {% endif %}
+  </form>
+  {% for table in tables %}
+  <form id="run-full-{{ table.id }}" method="post" action="/admin/connectors/run">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="connector_id" value="{{ config.id }}">
+    <input type="hidden" name="mode" value="full">
+    <input type="hidden" name="table_id" value="{{ table.id }}">
+  </form>
+  <form id="run-inc-{{ table.id }}" method="post" action="/admin/connectors/run">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="connector_id" value="{{ config.id }}">
+    <input type="hidden" name="mode" value="incremental">
+    <input type="hidden" name="table_id" value="{{ table.id }}">
+  </form>
+  {% endfor %}
+</section>
+
+<section class="panel connector-detail-section" id="syncHistory" style="display:none">
+  <div class="panel-header">
+    <h2>Historico de importacoes</h2>
+  </div>
+  {% if runs %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Inicio</th>
+          <th>Tabela</th>
+          <th>Modo</th>
+          <th>Status</th>
+          <th>Registros</th>
+          <th>Duracao</th>
+          <th>Erro</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td>{{ run.started_at|portal_dt }}</td>
+          <td><code>{{ run.table_name }}</code></td>
+          <td>{{ run.mode }}</td>
+          <td>{{ run.status }}</td>
+          <td>{{ run.row_count }}</td>
+          <td>{{ run.duration_ms }} ms</td>
+          <td class="text-danger small">{{ run.error_message or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:2rem;text-align:center;color:var(--color-text-tertiary)">
+    <i class="ti ti-history-off" style="font-size:32px;display:block;margin-bottom:8px"></i>
+    Nenhuma importação executada para este conector.
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel" id="errorLog" style="margin-top:1.5rem">
+  <div class="panel-header">
+    <h2 style="font-size:13px">Log de erros recentes</h2>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Nivel</th>
+          <th>Mensagem</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.created_at|portal_dt }}</td>
+          <td>{{ log.level }}</td>
+          <td class="text-danger">{{ log.message }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="empty-state">Nenhum erro registrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

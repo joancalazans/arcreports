@@ -1,0 +1,38 @@
+<section class="panel">
+  <div class="panel-header">
+    <h2>Resultado da execucao</h2>
+    <span class="badge text-bg-{{ 'success' if execution.status == 'success' else 'danger' }}">{{ execution.status }}</span>
+  </div>
+  {% if execution.error_message %}
+    <div class="alert alert-danger">{{ execution.error_message }}</div>
+  {% else %}
+    <div class="result-meta">
+      {{ execution.row_count }} linhas retornadas no preview em {{ execution.duration_ms }} ms.
+      {% if execution.destination_table %}Resultado salvo em <code>{{ execution.destination_table }}</code>.{% endif %}
+    </div>
+    <div class="table-responsive result-table">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            {% if rows %}
+              {% for column in rows[0].keys() %}
+                <th>{{ column }}</th>
+              {% endfor %}
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              {% for value in row.values() %}
+                <td>{{ value }}</td>
+              {% endfor %}
+            </tr>
+          {% else %}
+            <tr><td class="empty-state">Consulta executada sem linhas para exibir.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>

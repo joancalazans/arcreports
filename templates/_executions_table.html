@@ -1,0 +1,32 @@
+<div class="table-responsive">
+  <table class="table align-middle">
+    <thead>
+      <tr>
+        <th>Inicio</th>
+        <th>Fim</th>
+        <th>Relatorio</th>
+        <th>Destino</th>
+        <th>Status</th>
+        <th>Linhas</th>
+        <th>Tempo</th>
+        <th>Usuario</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in executions if executions is defined %}
+        <tr>
+          <td>{{ item.executed_at|portal_dt }}</td>
+          <td>{{ item.finished_at|portal_dt }}</td>
+          <td>{{ item.report.name if item.report else 'Manual' }}</td>
+          <td>{{ item.destination_table or '-' }}</td>
+          <td><span class="badge text-bg-{{ 'success' if item.status in ['success', 'preview', 'export', 'modal_open', 'modal_filter_execute', 'modal_export'] else 'danger' }}">{{ item.status }}</span></td>
+          <td>{{ item.row_count }}</td>
+          <td>{{ item.duration_ms }} ms</td>
+          <td>{{ item.user.username if item.user else '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="empty-state">Nenhuma execucao registrada.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

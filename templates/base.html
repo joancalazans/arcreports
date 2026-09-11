@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{{ app_name }}</title>
+  <link href="{{ url_for('static', path='vendor/bootstrap/5.3.3/css/bootstrap.min.css') }}" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='vendor/tabler-icons/3.35.0/tabler-icons.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
+  <style>
+    body {
+      font-family: {{ appearance.font_family if appearance is defined else 'system-ui, sans-serif' }};
+      font-size: {% if appearance is defined and appearance.font_size == 'compact' %}12px{% elif appearance is defined and appearance.font_size == 'spacious' %}15px{% else %}13px{% endif %};
+      line-height: {% if appearance is defined and appearance.font_size == 'compact' %}1.4{% elif appearance is defined and appearance.font_size == 'spacious' %}1.8{% else %}1.6{% endif %};
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-mark">{{ appearance.portal_initials if appearance is defined else 'GR' }}</div>
+          <div class="brand-text">
+            <strong>{{ appearance.portal_name if appearance is defined else 'GLPI Reports' }}</strong>
+            <span>Portal de relatorios</span>
+          </div>
+        </div>
+        <div class="sidebar-user-compact">
+          <span class="sidebar-username" title="{{ current_user.username if current_user else '' }}">{{ current_user.username if current_user else '' }}</span>
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">Sair</button>
+          </form>
+        </div>
+      </div>
+      <nav class="nav flex-column sidebar-nav">
+        {% set can_relatorios = current_user and (current_user.is_admin or current_user.portal_relatorios or current_user.portal_view) %}
+        {% set can_dashboard = current_user and (current_user.is_admin or current_user.portal_dashboard or current_user.portal_view) %}
+        {% set can_dashboard_admin = current_user and (current_user.is_admin or current_user.portal_dashboard) %}
+        {% set can_importacao = current_user and (current_user.is_admin or current_user.portal_importacao) %}
+        {% set can_usuarios = current_user and (current_user.is_admin or current_user.portal_usuarios) %}
+        {% set can_history = current_user and (current_user.is_admin or current_user.portal_relatorios or current_user.portal_importacao) %}
+        {% set menu_dashboards = menu_dashboards_for_user(current_user) if current_user else [] %}
+        <a class="nav-link {{ 'active' if active == 'home' else '' }}" href="/home">Home</a>
+        {% if can_dashboard %}
+          {% if menu_dashboards|length > 1 %}
+          <li class="nav-item" style="list-style:none">
+            <a class="nav-link {{ 'active' if active == 'dashboard' else '' }}" href="#" data-bs-toggle="collapse" data-bs-target="#submenu-dashboard" aria-expanded="{{ 'true' if active == 'dashboard' else 'false' }}" style="display:flex;justify-content:space-between;align-items:center">
+              Dashboard
+              <i class="ti ti-chevron-down" style="font-size:12px" aria-hidden="true"></i>
+            </a>
+            <div id="submenu-dashboard" class="collapse {% if active == 'dashboard' %}show{% endif %}" style="padding-left:1rem">
+            {% for dash in menu_dashboards %}
+              <a href="/dashboard/{{ dash.id }}" class="nav-link" style="font-size:12px;padding:4px 12px;color:rgba(255, 255, 255, 0.65)" onmouseover="this.style.color='rgba(255, 255, 255, 0.95)'" onmouseout="this.style.color='rgba(255, 255, 255, 0.65)'">
+                {{ dash.name }}
+              </a>
+            {% endfor %}
+            </div>
+          </li>
+          {% else %}
+          <a class="nav-link {{ 'active' if active == 'dashboard' else '' }}" href="/dashboard">Dashboard</a>
+          {% endif %}
+        {% endif %}
+        {% if can_relatorios %}
+        <a class="nav-link {{ 'active' if active == 'reports' else '' }}" href="/reports">Catalogo de Relatorios</a>
+        {% endif %}
+        {% if can_importacao or can_dashboard_admin or can_usuarios or can_history %}
+        <span class="nav-section">Administracao</span>
+        {% endif %}
+        {% if can_importacao %}
+        <a class="nav-link {{ 'active' if active == 'local_tables' else '' }}" href="/admin/local-tables">Tabelas Locais</a>
+        {% endif %}
+        {% if can_dashboard_admin %}
+        <a class="nav-link {{ 'active' if active == 'dashboard_sources' else '' }}" href="/admin/dashboard-sources">Fontes Dashboard</a>
+        <a class="nav-link {{ 'active' if active == 'dashboard_config' else '' }}" href="/admin/dashboard-config">Config. Dashboard</a>
+        {% endif %}
+        {% if can_usuarios %}
+        <a class="nav-link {{ 'active' if active == 'report_categories' else '' }}" href="/admin/report-categories">Categorias de Relatorios</a>
+        {% endif %}
+        {% if current_user and current_user.is_admin %}
+        <a class="nav-link {{ 'active' if active == 'system_health' else '' }}" href="/admin/system-health">
+          <i class="ti ti-activity-heartbeat" style="font-size:16px" aria-hidden="true"></i>
+          Saúde do Sistema
+        </a>
+        {% if sql_console_enabled %}
+        <a class="nav-link {{ 'active' if active == 'sql_console' else '' }}" href="/admin/sql-console">
+          <i class="ti ti-terminal" style="font-size:16px" aria-hidden="true"></i>
+          Console SQL
+        </a>
+        {% endif %}
+        <a class="nav-link {{ 'active' if active == 'appearance' else '' }}" href="/admin/appearance">
+          <i class="ti ti-palette" style="font-size:16px" aria-hidden="true"></i>
+          Personalização
+        </a>
+        {% endif %}
+        {% if can_history %}
+        <a class="nav-link {{ 'active' if active == 'history' else '' }}" href="/admin/history">Logs de Auditoria</a>
+        {% endif %}
+        {% if can_importacao %}
+        <a class="nav-link {{ 'active' if active == 'glpi_import' else '' }}" href="/admin/connectors">Conectores</a>
+        {% endif %}
+        {% if can_usuarios %}
+        <a class="nav-link {{ 'active' if active == 'ldap' else '' }}" href="/admin/ldap">LDAP</a>
+        {% if current_user and current_user.is_admin %}
+        <a class="nav-link {{ 'active' if active == 'db_users' else '' }}" href="/admin/db-users">
+          <i class="ti ti-database-user" style="font-size:16px" aria-hidden="true"></i>
+          Gestão de Usuários DB
+        </a>
+        {% endif %}
+        <a class="nav-link {{ 'active' if active == 'users_groups' else '' }}" href="/admin/users-groups">Usuarios e Grupos</a>
+        {% endif %}
+      </nav>
+    </aside>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script src="{{ url_for('static', path='vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js') }}"></script>
+  <script>
+    async function iniciarAtualizacao(reportId, nome) {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+      let statusEl = document.getElementById('refresh-status');
+      let statusText = document.getElementById('refresh-status-text');
+      if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'refresh-status';
+        statusEl.className = 'alert alert-info';
+        statusEl.style.position = 'fixed';
+        statusEl.style.right = '20px';
+        statusEl.style.bottom = '20px';
+        statusEl.style.zIndex = '2000';
+        statusText = document.createElement('span');
+        statusText.id = 'refresh-status-text';
+        statusEl.appendChild(statusText);
+        document.body.appendChild(statusEl);
+      }
+      statusEl.style.display = '';
+      statusEl.className = 'alert alert-info';
+      statusText.textContent = 'Iniciando atualizacao...';
+      let executionId;
+      try {
+        const response = await fetch(`/reports/${reportId}/refresh`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken},
+          body: `csrf_token=${encodeURIComponent(csrfToken)}`,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Falha ao iniciar atualizacao.');
+        executionId = data.execution_id;
+      } catch (error) {
+        statusEl.className = 'alert alert-danger';
+        statusText.textContent = `Erro: ${error.message}`;
+        return;
+      }
+      const startedAt = Date.now();
+      const timer = setInterval(async () => {
+        try {
+          const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+          statusText.textContent = `Atualizando ${nome}... ${elapsed}s`;
+          const response = await fetch(`/reports/executions/${executionId}/status`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Falha ao consultar status.');
+          if (data.status === 'success') {
+            clearInterval(timer);
+            statusEl.className = 'alert alert-success';
+            statusText.textContent = `✅ ${data.row_count} linhas salvas em ${(data.duration_ms / 1000).toFixed(1)}s`;
+            setTimeout(() => window.location.reload(), 2000);
+          } else if (data.status === 'error') {
+            clearInterval(timer);
+            statusEl.className = 'alert alert-danger';
+            statusText.textContent = `❌ Erro: ${data.error_message}`;
+          }
+        } catch (error) {
+          clearInterval(timer);
+          statusEl.className = 'alert alert-danger';
+          statusText.textContent = `Erro no polling: ${error.message}`;
+        }
+      }, 2000);
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+      const token = document.querySelector('meta[name="csrf-token"]')?.content;
+      const originalFetch = window.fetch;
+      window.fetch = function(url, options = {}) {
+        options.headers = options.headers || {};
+        if (token) {
+          options.headers["X-CSRF-Token"] = token;
+        }
+        return originalFetch(url, options);
+      };
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+  {% block modal_overlay %}{% endblock %}
+  {% block page_modals %}{% endblock %}
+</body>
+</html>

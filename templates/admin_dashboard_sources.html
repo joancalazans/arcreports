@@ -1,0 +1,628 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem">
+  <div>
+    <h1 style="font-size:18px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">
+      Fontes Dashboard
+    </h1>
+    <p style="font-size:13px;color:var(--color-text-tertiary)">
+      Controle quais tabelas locais podem alimentar widgets do Dashboard.
+    </p>
+  </div>
+  <div style="font-size:11px;color:var(--color-text-tertiary);text-align:right;margin-top:4px">
+    {{ total_sources }} tabelas disponíveis
+    <br>
+    <strong style="color:var(--color-text-primary)">
+      {{ active_sources }} habilitadas
+    </strong>
+  </div>
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<style>
+  .db-card-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 1.5rem;
+  }
+
+  .db-card {
+    align-items: center;
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 160px;
+    padding: 1.25rem 1rem;
+    text-align: center;
+    transition: border-color .15s, box-shadow .15s;
+  }
+
+  .db-card:hover {
+    border-color: #B5D4F4;
+    box-shadow: 0 0 0 2px rgba(55,138,221,0.1);
+  }
+
+  .db-card.is-primary {
+    border-color: #B5D4F4;
+    background: #F0F7FF;
+  }
+
+  .db-card-icon {
+    color: var(--color-text-tertiary);
+    font-size: 28px;
+  }
+
+  .db-card.is-primary .db-card-icon {
+    color: #378ADD;
+  }
+
+  .db-card-name {
+    color: var(--color-text-primary);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .db-card-count {
+    color: var(--color-text-tertiary);
+    font-size: 11px;
+  }
+
+  .db-breadcrumb {
+    align-items: center;
+    color: var(--color-text-secondary);
+    display: flex;
+    font-size: 12px;
+    gap: 6px;
+    margin-bottom: 1rem;
+  }
+
+  .db-breadcrumb button {
+    background: none;
+    border: none;
+    color: #378ADD;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  .source-pager {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+</style>
+
+<div style="display:flex;gap:4px;margin-bottom:12px">
+  <button id="tab-enabled" onclick="showTab('enabled')" style="font-size:11px;padding:4px 12px;border-radius:6px;cursor:pointer;background:#378ADD;color:#fff;border:0.5px solid #378ADD">
+    Habilitadas ({{ active_sources }})
+  </button>
+  <button id="tab-all" onclick="showTab('all')" style="font-size:11px;padding:4px 12px;border-radius:6px;cursor:pointer;background:transparent;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">
+    Todas as tabelas
+  </button>
+</div>
+
+<div id="panel-enabled">
+  {% for source in enabled_sources %}
+  <div id="source-card-{{ source.id }}" class="source-card" data-table-name="{{ source.table_name }}" style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:0.5px solid var(--color-border-tertiary)">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:500;color:#185FA5">{{ source.table_name }}</span>
+          {% if source.database != 'reports' %}
+          <span class="badge" style="background:#F3F0FF;color:#6d28d9;font-size:10px">{{ source.database }}</span>
+          {% endif %}
+          {% if not source.table_exists %}
+          <span style="font-size:9px;padding:1px 6px;border-radius:8px;background:#FDECEC;color:#B42318;border:0.5px solid #F4B7B2">Tabela não encontrada</span>
+          {% endif %}
+        </div>
+        <div style="font-size:10px;color:var(--color-text-tertiary);margin-top:1px">
+          {{ source.source_type or 'tabela_origem' }} · {{ source.row_count or '—' }} linhas
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span id="active-label-{{ source.id }}" style="font-size:10px;color:#1D9E75">Habilitada</span>
+        <div onclick="toggleSource({{ source.id }}, false)" style="width:34px;height:18px;border-radius:9px;background:#1D9E75;position:relative;cursor:pointer" id="toggle-{{ source.id }}">
+          <div style="width:12px;height:12px;background:#fff;border-radius:50%;position:absolute;top:3px;left:19px" id="toggle-dot-{{ source.id }}"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="config-{{ source.id }}" style="padding:10px 14px">
+      <div style="display:grid;grid-template-columns:2fr 1.5fr 1.5fr;gap:8px;align-items:end">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label style="font-size:9px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em">Nome amigável</label>
+          <input type="text" id="name-{{ source.id }}" value="{{ source.display_name or '' }}" onchange="markChanged({{ source.id }})" style="height:28px;border:0.5px solid var(--color-border-tertiary);border-radius:5px;padding:0 8px;font-size:11px">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label style="font-size:9px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em">Campo temporal padrão</label>
+          <select id="timefield-{{ source.id }}" onchange="markChanged({{ source.id }})" style="height:28px;border:0.5px solid var(--color-border-tertiary);border-radius:5px;padding:0 8px;font-size:11px">
+            <option value="">Sem campo padrão</option>
+            {% for col in source.columns or [] %}
+            <option value="{{ col }}" {% if col == source.default_time_field %}selected{% endif %}>{{ col }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label style="font-size:9px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em">Categoria</label>
+          <select id="cat-{{ source.id }}" onchange="markChanged({{ source.id }})" style="height:28px;border:0.5px solid var(--color-border-tertiary);border-radius:5px;padding:0 8px;font-size:11px">
+            <option value="">None</option>
+            {% for cat in categories %}
+            <option value="{{ cat.name }}" {% if source.category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="actions-{{ source.id }}" style="display:flex;align-items:center;padding:7px 14px;border-top:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)">
+      <span id="status-{{ source.id }}" style="font-size:9px;padding:1px 7px;border-radius:8px;background:var(--color-background-secondary);color:var(--color-text-tertiary)"></span>
+      <button onclick="deleteSource({{ source.id }})" style="font-size:11px;padding:4px 12px;background:#FCEBEB;color:#A32D2D;border:0.5px solid #F09595;border-radius:5px;cursor:pointer;margin-left:auto">
+        Excluir
+      </button>
+      <button onclick="saveSource({{ source.id }})" style="font-size:11px;padding:4px 12px;background:#378ADD;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:8px">
+        Salvar
+      </button>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state">Nenhuma fonte habilitada para o Dashboard.</div>
+  {% endfor %}
+</div>
+
+<div id="panel-all" style="display:none"></div>
+<div id="panel-search" style="display:none"></div>
+
+<div class="modal fade" id="deleteDependencyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="deleteDependencyTitle">Confirmar exclusao</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="deleteDependencyBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-outline-danger" id="deleteDependencyConfirm">Excluir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  var activeTab = 'enabled';
+  var allLoaded = false;
+  var databaseCards = [];
+  var selectedDatabase = null;
+  var currentTablePage = 1;
+  var currentSearchPage = 1;
+  var currentSearchTerm = '';
+  var searchTimeout;
+  var categories = {{ categories|map(attribute='name')|list|tojson }};
+  var deleteModal = new bootstrap.Modal(document.getElementById('deleteDependencyModal'));
+  var pendingSourceDelete = null;
+
+  function sourceRowCount(source) {
+    if (source.table_exists === false) return '—';
+    return source.row_count || source.estimated_rows || '—';
+  }
+
+  function sourceMissingBadge(source) {
+    return source.table_exists === false
+      ? '<span style="font-size:9px;padding:1px 6px;border-radius:8px;background:#FDECEC;color:#B42318;border:0.5px solid #F4B7B2">Tabela não encontrada</span>'
+      : '';
+  }
+
+  function sourceDatabaseBadge(source) {
+    return source.database && source.database !== 'reports'
+      ? '<span class="badge" style="background:#F3F0FF;color:#6d28d9;font-size:10px">' + escapeHtml(source.database) + '</span>'
+      : '';
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, function(char) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[char];
+    });
+  }
+
+  function setTabStyle(tab) {
+    var enabled = document.getElementById('tab-enabled');
+    var all = document.getElementById('tab-all');
+    var activeButton = tab === 'enabled' ? enabled : all;
+    var inactiveButton = tab === 'enabled' ? all : enabled;
+    activeButton.style.background = '#378ADD';
+    activeButton.style.color = '#fff';
+    activeButton.style.borderColor = '#378ADD';
+    inactiveButton.style.background = 'transparent';
+    inactiveButton.style.color = 'var(--color-text-secondary)';
+    inactiveButton.style.borderColor = 'var(--color-border-tertiary)';
+  }
+
+  function showTab(tab) {
+    activeTab = tab;
+    document.getElementById('panel-search').style.display = 'none';
+    document.getElementById('panel-enabled').style.display = tab === 'enabled' ? 'block' : 'none';
+    document.getElementById('panel-all').style.display = tab === 'all' ? 'block' : 'none';
+    setTabStyle(tab);
+    if (tab === 'all' && !allLoaded) {
+      loadDatabaseCards();
+    } else if (tab === 'all') {
+      renderDatabaseCards();
+    }
+  }
+
+  function allLoading() {
+    document.getElementById('panel-all').innerHTML =
+      '<div style="padding:16px;color:var(--color-text-tertiary);font-size:12px;text-align:center">' +
+      '<i class="ti ti-loader" style="font-size:16px"></i> Carregando...</div>';
+  }
+
+  function loadDatabaseCards() {
+    allLoading();
+    fetch('/admin/dashboard-sources/databases')
+      .then(function(r) {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      })
+      .then(function(data) {
+        databaseCards = data || [];
+        allLoaded = true;
+        renderDatabaseCards();
+      })
+      .catch(function(e) {
+        document.getElementById('panel-all').innerHTML =
+          '<div style="padding:16px;color:var(--color-text-danger);font-size:12px">Erro ao carregar: ' +
+          escapeHtml(e.message) + '</div>';
+      });
+  }
+
+  function databaseTypeBadge(item) {
+    return item.is_primary
+      ? '<span class="badge text-bg-primary" style="font-size:10px">principal</span>'
+      : '<span class="badge" style="background:#F3F0FF;color:#6d28d9;font-size:10px">conector</span>';
+  }
+
+  function renderDatabaseCards() {
+    selectedDatabase = null;
+    currentSearchTerm = '';
+    var cards = databaseCards.map(function(item) {
+      return '<button type="button" class="db-card ' + (item.is_primary ? 'is-primary' : '') + '" onclick="selectDatabase(\'' + escapeHtml(item.name) + '\')">' +
+        '<i class="ti ' + escapeHtml(item.icon) + ' db-card-icon"></i>' +
+        '<span class="db-card-name">' + escapeHtml(item.display_name) + '</span>' +
+        '<span class="db-card-count">' + escapeHtml(item.table_count) + ' tabelas</span>' +
+        databaseTypeBadge(item) +
+      '</button>';
+    }).join('');
+    document.getElementById('panel-all').innerHTML =
+      '<div class="db-card-grid">' + (cards || '<div class="empty-state">Nenhuma database gerenciada encontrada.</div>') + '</div>' +
+      '<div style="position:relative;margin-bottom:12px">' +
+      '<i class="ti ti-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--color-text-tertiary)" aria-hidden="true"></i>' +
+      '<input type="text" id="search-sources" placeholder="Buscar em todas as databases..." oninput="searchSources(this.value)" style="width:100%;height:34px;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:0 10px 0 34px;font-size:12px">' +
+      '</div>';
+  }
+
+  function selectDatabase(database, page) {
+    selectedDatabase = database;
+    currentTablePage = page || 1;
+    allLoading();
+    fetch('/admin/dashboard-sources/tables?database=' + encodeURIComponent(database) + '&page=' + currentTablePage + '&per_page=20')
+        .then(function(r) {
+          if (!r.ok) throw new Error(r.status);
+          return r.json();
+        })
+        .then(function(data) {
+          renderDatabaseTables(data);
+        })
+        .catch(function(e) {
+          document.getElementById('panel-all').innerHTML =
+            '<div style="padding:16px;color:var(--color-text-danger);font-size:12px">Erro ao carregar: ' +
+            escapeHtml(e.message) + '</div>';
+        });
+  }
+
+  function paginationControls(data, callbackName) {
+    if (data.pages <= 1) return '';
+    var start = data.total ? ((data.current_page - 1) * data.per_page) + 1 : 0;
+    var end = Math.min(data.current_page * data.per_page, data.total);
+    var prevDisabled = data.current_page <= 1 ? 'disabled' : '';
+    var nextDisabled = data.current_page >= data.pages ? 'disabled' : '';
+    return '<div class="source-pager">' +
+      '<span style="font-size:11px;color:var(--color-text-tertiary);margin-right:auto">Mostrando ' + start + '-' + end + ' de ' + data.total + ' tabelas</span>' +
+      '<button class="btn btn-outline-secondary btn-sm" type="button" ' + prevDisabled + ' onclick="' + callbackName + '(' + (data.current_page - 1) + ')">← Anterior</button>' +
+      '<button class="btn btn-outline-secondary btn-sm" type="button" ' + nextDisabled + ' onclick="' + callbackName + '(' + (data.current_page + 1) + ')">Próxima →</button>' +
+      '</div>';
+  }
+
+  function resultRows(data) {
+    var items = Array.isArray(data) ? data : (data.items || []);
+    if (!items.length) {
+      return '<div class="empty-state">Nenhuma fonte encontrada.</div>';
+    }
+    return '<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:6px;overflow:hidden">' +
+      items.map(function(source) {
+        var sourceId = source.source_id || source.id;
+        var enabled = source.is_enabled || source.is_active;
+        var action = enabled
+          ? '<span id="source-action-' + sourceId + '" style="font-size:10px;color:#1D9E75">Habilitada</span>'
+          : '<button id="source-action-' + sourceId + '" onclick="enableSource(' + sourceId + ')" style="font-size:10px;padding:3px 8px;background:#E6F1FB;border:0.5px solid #85B7EB;border-radius:4px;color:#185FA5;cursor:pointer">+ Habilitar</button>';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:0.5px solid var(--color-border-tertiary)">' +
+          '<div style="flex:1">' +
+          '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+          '<span style="font-size:11px;color:#185FA5">' + escapeHtml(source.display_name || source.table_name || source.name) + '</span>' +
+          sourceDatabaseBadge(source) +
+          sourceMissingBadge(source) + '</div>' +
+          '<div style="font-size:10px;color:var(--color-text-tertiary)">' + escapeHtml(sourceRowCount(source)) + ' linhas</div>' +
+          '</div>' + action + '</div>';
+      }).join('') +
+      '</div>';
+  }
+
+  function renderDatabaseTables(data) {
+    document.getElementById('panel-all').innerHTML =
+      '<div class="db-breadcrumb"><button type="button" onclick="renderDatabaseCards()">Todas as tabelas</button><span>›</span><strong>' + escapeHtml(data.database) + '</strong></div>' +
+      '<button class="btn btn-outline-secondary btn-sm" type="button" onclick="renderDatabaseCards()" style="margin-bottom:12px">← Voltar</button>' +
+      resultRows(data) +
+      paginationControls(data, 'goDatabasePage');
+  }
+
+  function goDatabasePage(page) {
+    if (!selectedDatabase || page < 1) return;
+    selectDatabase(selectedDatabase, page);
+  }
+
+  function renderSearchResults(data) {
+    document.getElementById('panel-all').style.display = activeTab === 'all' ? 'block' : 'none';
+    document.getElementById('panel-search').style.display = 'none';
+    document.getElementById('panel-all').innerHTML =
+      '<div class="db-breadcrumb"><strong>Resultados para \'' + escapeHtml(data.query || currentSearchTerm) + '\'</strong></div>' +
+      '<button class="btn btn-outline-secondary btn-sm" type="button" onclick="renderDatabaseCards()" style="margin-bottom:12px">← Limpar busca</button>' +
+      resultRows(data) +
+      paginationControls(data, 'goSearchPage');
+  }
+
+  function goSearchPage(page) {
+    if (!currentSearchTerm || page < 1) return;
+    runSearch(currentSearchTerm, page);
+  }
+
+  function searchSources(q) {
+    clearTimeout(searchTimeout);
+    if (q.length < 2) {
+      currentSearchTerm = '';
+      return;
+    }
+    searchTimeout = setTimeout(function() {
+      runSearch(q, 1);
+    }, 300);
+  }
+
+  function runSearch(q, page) {
+    currentSearchTerm = q;
+    currentSearchPage = page || 1;
+    allLoading();
+    fetch('/admin/dashboard-sources/search?q=' + encodeURIComponent(q) + '&page=' + currentSearchPage + '&per_page=20', {
+      headers: {'X-CSRF-Token': csrfToken}
+    })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        renderSearchResults(data);
+      });
+  }
+
+  function markChanged(sourceId) {
+    var status = document.getElementById('status-' + sourceId);
+    if (!status) return;
+    status.textContent = 'Alterado';
+    status.style.background = '#E6F1FB';
+    status.style.color = '#185FA5';
+  }
+
+  function setSaved(sourceId) {
+    var status = document.getElementById('status-' + sourceId);
+    if (!status) return;
+    status.textContent = 'Salvo';
+    status.style.background = '#E7F6F1';
+    status.style.color = '#1D9E75';
+  }
+
+  function saveSource(sourceId) {
+    var card = document.getElementById('source-card-' + sourceId);
+    if (!card) return;
+    var tableName = card.dataset.tableName;
+    var body = new URLSearchParams();
+    body.set('csrf_token', csrfToken);
+    body.set('name', document.getElementById('name-' + sourceId)?.value || tableName);
+    body.set('default_time_field', document.getElementById('timefield-' + sourceId)?.value || '');
+    body.set('category', document.getElementById('cat-' + sourceId)?.value || '');
+    body.set('is_active', 'on');
+    fetch('/admin/dashboard-sources/' + encodeURIComponent(tableName), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-Token': csrfToken
+      },
+      body: body
+    })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        if (data.success) setSaved(sourceId);
+      });
+  }
+
+  function updateToggle(sourceId, enabled) {
+    var toggle = document.getElementById('toggle-' + sourceId);
+    var dot = document.getElementById('toggle-dot-' + sourceId);
+    var label = document.getElementById('active-label-' + sourceId);
+    if (toggle) {
+      toggle.style.background = enabled ? '#1D9E75' : 'var(--color-background-secondary)';
+      toggle.style.border = enabled ? 'none' : '0.5px solid var(--color-border-tertiary)';
+      toggle.setAttribute('onclick', 'toggleSource(' + sourceId + ', ' + (!enabled) + ')');
+    }
+    if (dot) dot.style.left = enabled ? '19px' : '3px';
+    if (label) {
+      label.textContent = enabled ? 'Habilitada' : 'Desabilitada';
+      label.style.color = enabled ? '#1D9E75' : 'var(--color-text-tertiary)';
+    }
+  }
+
+  function toggleSource(sourceId, enable) {
+    var action = enable ? 'enable' : 'disable';
+    fetch('/admin/dashboard-sources/' + sourceId + '/' + action, {
+      method: 'POST',
+      headers: {'X-CSRF-Token': csrfToken}
+    })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        if (!data.success) return;
+        updateToggle(sourceId, data.is_active);
+        if (!data.is_active) {
+          document.getElementById('source-card-' + sourceId)?.remove();
+        } else if (data.source) {
+          addEnabledCard(data.source);
+        }
+      });
+  }
+
+  function deleteSource(sourceId) {
+    fetch('/admin/dashboard-sources/' + sourceId + '/dependencies')
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        if (!data.success) {
+          alert(data.error || 'Nao foi possivel verificar dependencias.');
+          return;
+        }
+        pendingSourceDelete = {id: sourceId, cascade: data.has_dependencies, name: data.source.name};
+        document.getElementById('deleteDependencyTitle').textContent = data.has_dependencies ? 'Exclusao com dependencias' : 'Confirmar exclusao';
+        if (data.has_dependencies) {
+          var rows = data.widgets.map(function(widget) {
+            return '<li>' + escapeHtml(widget.dashboard) + ' - ' + escapeHtml(widget.title) + '</li>';
+          }).join('');
+          document.getElementById('deleteDependencyBody').innerHTML =
+            '<p><strong>A fonte \'' + escapeHtml(pendingSourceDelete.name) + '\' possui ' + data.widget_count + ' widgets vinculados:</strong></p>' +
+            '<ul>' + rows + '</ul><p>Escolha uma opcao.</p>';
+          document.getElementById('deleteDependencyConfirm').textContent = 'Excluir fonte e widgets vinculados';
+        } else {
+          document.getElementById('deleteDependencyBody').innerHTML =
+            '<p>Confirmar exclusao de \'' + escapeHtml(pendingSourceDelete.name) + '\'?</p>' +
+            '<p>Esta fonte nao possui widgets vinculados.</p>';
+          document.getElementById('deleteDependencyConfirm').textContent = 'Excluir';
+        }
+        deleteModal.show();
+      });
+  }
+
+  document.getElementById('deleteDependencyConfirm').addEventListener('click', function() {
+    if (!pendingSourceDelete) return;
+    if (pendingSourceDelete.cascade) {
+      var confirmed = confirm(
+        'Confirmar exclusao em cascata?\n\n' +
+        'Serao excluidos permanentemente a fonte e os widgets vinculados.\n' +
+        'Esta acao nao pode ser desfeita.'
+      );
+      if (!confirmed) return;
+    }
+    fetch('/admin/dashboard-sources/' + pendingSourceDelete.id + '/delete', {
+      method: 'POST',
+      headers: {
+        'X-CSRF-Token': csrfToken,
+        'X-Cascade-Confirm': pendingSourceDelete.cascade ? 'true' : 'false',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        if (!data.success) {
+          alert(data.error || 'Nao foi possivel excluir a fonte.');
+          return;
+        }
+        document.getElementById('source-card-' + pendingSourceDelete.id)?.remove();
+        deleteModal.hide();
+        pendingSourceDelete = null;
+      });
+  });
+
+  function categoryOptions(selected) {
+    return '<option value="">None</option>' + categories.map(function(category) {
+      var safe = escapeHtml(category);
+      var isSelected = category === selected ? ' selected' : '';
+      return '<option value="' + safe + '"' + isSelected + '>' + safe + '</option>';
+    }).join('');
+  }
+
+  function columnOptions(source) {
+    var options = '<option value="">Sem campo padrão</option>';
+    return options + (source.columns || []).map(function(column) {
+      var safe = escapeHtml(column);
+      var selected = column === source.default_time_field ? ' selected' : '';
+      return '<option value="' + safe + '"' + selected + '>' + safe + '</option>';
+    }).join('');
+  }
+
+  function addEnabledCard(source) {
+    if (document.getElementById('source-card-' + source.id)) return;
+    var panel = document.getElementById('panel-enabled');
+    var empty = panel.querySelector('.empty-state');
+    if (empty) empty.remove();
+    var card = document.createElement('div');
+    card.id = 'source-card-' + source.id;
+    card.className = 'source-card';
+    card.dataset.tableName = source.table_name;
+    card.style.cssText = 'background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;margin-bottom:8px';
+    card.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:0.5px solid var(--color-border-tertiary)">' +
+      '<div style="flex:1"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+      '<span style="font-size:12px;font-weight:500;color:#185FA5">' + escapeHtml(source.table_name) + '</span>' +
+      sourceDatabaseBadge(source) +
+      sourceMissingBadge(source) + '</div>' +
+      '<div style="font-size:10px;color:var(--color-text-tertiary);margin-top:1px">tabela_origem · ' + escapeHtml(sourceRowCount(source)) + ' linhas</div></div>' +
+      '<div style="display:flex;align-items:center;gap:6px"><span id="active-label-' + source.id + '" style="font-size:10px;color:#1D9E75">Habilitada</span>' +
+      '<div onclick="toggleSource(' + source.id + ', false)" style="width:34px;height:18px;border-radius:9px;background:#1D9E75;position:relative;cursor:pointer" id="toggle-' + source.id + '">' +
+      '<div style="width:12px;height:12px;background:#fff;border-radius:50%;position:absolute;top:3px;left:19px" id="toggle-dot-' + source.id + '"></div></div></div></div>' +
+      '<div id="config-' + source.id + '" style="padding:10px 14px"><div style="display:grid;grid-template-columns:2fr 1.5fr 1.5fr;gap:8px;align-items:end">' +
+      '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:9px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em">Nome amigável</label>' +
+      '<input type="text" id="name-' + source.id + '" value="' + escapeHtml(source.display_name || '') + '" onchange="markChanged(' + source.id + ')" style="height:28px;border:0.5px solid var(--color-border-tertiary);border-radius:5px;padding:0 8px;font-size:11px"></div>' +
+      '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:9px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em">Campo temporal padrão</label>' +
+      '<select id="timefield-' + source.id + '" onchange="markChanged(' + source.id + ')" style="height:28px;border:0.5px solid var(--color-border-tertiary);border-radius:5px;padding:0 8px;font-size:11px">' + columnOptions(source) + '</select></div>' +
+      '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:9px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em">Categoria</label>' +
+      '<select id="cat-' + source.id + '" onchange="markChanged(' + source.id + ')" style="height:28px;border:0.5px solid var(--color-border-tertiary);border-radius:5px;padding:0 8px;font-size:11px">' + categoryOptions(source.category) + '</select></div>' +
+      '</div></div><div id="actions-' + source.id + '" style="display:flex;align-items:center;padding:7px 14px;border-top:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)">' +
+      '<span id="status-' + source.id + '" style="font-size:9px;padding:1px 7px;border-radius:8px;background:var(--color-background-secondary);color:var(--color-text-tertiary)"></span>' +
+      '<button onclick="deleteSource(' + source.id + ')" style="font-size:11px;padding:4px 12px;background:#FCEBEB;color:#A32D2D;border:0.5px solid #F09595;border-radius:5px;cursor:pointer;margin-left:auto">Excluir</button>' +
+      '<button onclick="saveSource(' + source.id + ')" style="font-size:11px;padding:4px 12px;background:#378ADD;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:8px">Salvar</button></div>';
+    panel.prepend(card);
+  }
+
+  function enableSource(sourceId) {
+    fetch('/admin/dashboard-sources/' + sourceId + '/enable', {
+      method: 'POST',
+      headers: {'X-CSRF-Token': csrfToken}
+    })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        if (!data.success) return;
+        var action = document.getElementById('source-action-' + sourceId);
+        if (action) {
+          action.outerHTML = '<span id="source-action-' + sourceId + '" style="font-size:10px;color:#1D9E75">Habilitada</span>';
+        }
+        if (data.source) addEnabledCard(data.source);
+      });
+  }
+
+  document.querySelectorAll('.source-card').forEach(function(card) {
+    var id = card.id.replace('source-card-', '');
+    var title = card.querySelector('[style*="color:#185FA5"]');
+    if (title) card.dataset.tableName = title.textContent.trim();
+  });
+</script>
+{% endblock %}

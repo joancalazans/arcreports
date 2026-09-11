@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>LDAP</h1>
+    <p>Configuracao de autenticacao LDAP e Active Directory.</p>
+  </div>
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<section style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem">
+  <form method="post" action="/admin/ldap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:12px">
+      <h2 style="font-size:16px;font-weight:500;color:var(--color-text-primary);margin:0">Configuracao LDAP</h2>
+      <div>
+        <div class="form-check form-switch">
+          <input class="form-check-input" id="enabled" name="enabled" type="checkbox" {% if config.enabled %}checked{% endif %}>
+          <label class="form-check-label" for="enabled">LDAP habilitado</label>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 120px 120px;gap:12px;margin-bottom:12px">
+      <div>
+        <label class="form-label" for="server">Servidor</label>
+        <input class="form-control" id="server" name="server" value="{{ config.server }}" required>
+      </div>
+      <div>
+        <label class="form-label" for="port">Porta</label>
+        <input class="form-control" id="port" name="port" value="{{ config.port }}" required>
+      </div>
+      <div>
+        <label class="form-label d-block" for="use_ssl">SSL</label>
+        <input class="form-check-input mt-2" id="use_ssl" name="use_ssl" type="checkbox" {% if config.use_ssl %}checked{% endif %}>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div>
+        <label class="form-label" for="base_dn">BASE_DN</label>
+        <input class="form-control" id="base_dn" name="base_dn" value="{{ config.base_dn }}" required>
+      </div>
+      <div>
+        <label class="form-label" for="bind_dn">BIND_DN</label>
+        <input class="form-control" id="bind_dn" name="bind_dn" value="{{ config.bind_dn }}" required>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label class="form-label" for="user_filter">USER_FILTER</label>
+        <input class="form-control" id="user_filter" name="user_filter" value="{{ config.user_filter }}" placeholder="(sAMAccountName={username})" required>
+      </div>
+      <div>
+        <label class="form-label" for="bind_password">Senha do bind</label>
+        <input class="form-control" id="bind_password" name="bind_password" type="password" placeholder="Manter senha atual">
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:0.5px solid var(--color-border-tertiary)">
+      <button type="submit" style="background:#E6F1FB;border:0.5px solid #85B7EB;color:#185FA5;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer">Salvar configuracoes</button>
+    </div>
+  </form>
+</section>
+
+<section style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem">
+  <div style="padding-bottom:8px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:12px">
+    <h2 style="font-size:16px;font-weight:500;color:var(--color-text-primary);margin:0">Status da conexao</h2>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+    <div style="background:#fff;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px 14px">
+      <span style="display:block;font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Ultima conexao</span>
+      <strong style="display:block;font-size:16px;font-weight:500;color:var(--color-text-primary)">{{ config.last_connection_status or 'Sem teste' }}</strong>
+    </div>
+    <div style="background:#fff;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px 14px">
+      <span style="display:block;font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Data</span>
+      <strong style="display:block;font-size:16px;font-weight:500;color:var(--color-text-primary)">{{ config.last_connection_at|portal_dt }}</strong>
+    </div>
+    <div style="background:#fff;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px 14px">
+      <span style="display:block;font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Ultimo erro</span>
+      <strong style="display:block;font-size:16px;font-weight:500;color:var(--color-text-danger)">{{ config.last_error or '-' }}</strong>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem">
+  <div style="padding-bottom:8px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:12px">
+    <h2 style="font-size:16px;font-weight:500;color:var(--color-text-primary);margin:0">Testes</h2>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+    <form id="ldapSearchForm" method="post" action="/admin/ldap/test" style="display:contents">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div>
+        <label class="form-label" for="search_username">Usuario para busca</label>
+        <input class="form-control" id="search_username" name="username" autocomplete="off" required>
+      </div>
+    </form>
+    <form id="ldapAuthForm" method="post" action="/admin/ldap/test-auth" style="display:contents">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div>
+        <label class="form-label" for="auth_username">Usuario</label>
+        <input class="form-control" id="auth_username" name="username" autocomplete="off" required>
+      </div>
+      <div>
+        <label class="form-label" for="auth_password">Senha</label>
+        <input class="form-control" id="auth_password" name="password" type="password" autocomplete="off" required>
+      </div>
+    </form>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding-top:12px;border-top:0.5px solid var(--color-border-tertiary)">
+    <button form="ldapSearchForm" type="submit" style="background:#E6F1FB;border:0.5px solid #85B7EB;color:#185FA5;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer">
+      Testar LDAP
+    </button>
+    <button form="ldapAuthForm" type="submit" style="background:transparent;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer">
+      Testar autenticacao
+    </button>
+  </div>
+</section>
+{% endblock %}

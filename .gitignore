@@ -1,0 +1,99 @@
+# Ambientes reais — nunca publicar
+.env
+.env.*
+*.env
+*.env.*
+!/.env.example
+!/ldap.env.example
+!/local.env.example
+
+# Segredos e chaves
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# Dados operacionais
+/logs/
+/snapshots/
+/static/uploads/
+/backups/
+*.log
+*.log.*
+*.log-*
+*.sql.gz
+*.sql.bz2
+*.dump
+*.dmp
+*.db
+*.sqlite
+*.sqlite3
+
+# Ambientes e caches Python
+/venv/
+/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Ferramentas internas
+/.agents/
+/.codex/
+/.idea/
+/.vscode/
+.DS_Store
+Thumbs.db
+
+# Arquivos avulsos sensíveis/obsoletos da raiz
+/AVALIACAO_TECNICA_PORTAL_GLPI.md
+/DOCUMENTACAO_IMPLEMENTACOES_PORTAL_GLPI.md
+/RESUMO_PORTAL_GLPI.txt
+/InfoFiltro.txt
+/configuser.txt
+/debugmemora.txt
+/etlimport.txt
+/filtrodashboard.txt
+/sti_memora_relatorio.txt
+
+# Migrações manuais legadas
+/migrations/
+
+# Docs — apenas arquivos públicos revisados
+/docs/*
+!/docs/PRODUCT.md
+!/docs/arcreports.service.example
+!/docs/diagnostico_config_dashboard.md
+!/docs/impl_cancel_full_personalizado_2026-07-22.md
+!/docs/impl_readme_install_2026-09-10.md
+!/docs/install_db_setup.sql
+!/docs/migrate_passwords_encrypt.py
+!/docs/nginx.example.conf
+!/docs/fix_generalize_2026-09-10.md
+!/docs/alembic_workflow.md
+!/docs/validation_readme_install_compile_2026-09-10.txt
+!/docs/validation_readme_install_config_2026-09-10.txt
+!/docs/validation_readme_install_pytest_2026-09-10.txt
+!/docs/validation_readme_install_static_2026-09-10.txt
+
+# Itens ainda sensíveis conforme a triagem de 2026-09-10
+/README.md
+/app/routes/sql_console.py
+/app/routes/system_health.py
+/tests/test_audit_csv.py
+/tests/test_dashboard_sources.py
+/tests/test_db_users.py
+/tests/test_destination_columns.py
+/tests/test_period_filter.py
+/tests/test_permissions.py
+/tests/test_rate_limiting.py
+/tests/test_system_health.py
+/docs/alembic_workflow.md

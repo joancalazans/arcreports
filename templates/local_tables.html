@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/tabler-icons/3.35.0/tabler-icons.min.css') }}">
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Tabelas Locais</h1>
+    <p>Gerencie tabelas de resultado dos relatorios no banco local reports.</p>
+  </div>
+  <form method="post" action="/admin/local-tables/cleanup-temp-reports">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn btn-outline-secondary" type="submit">Limpar temporarias expiradas</button>
+  </form>
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<section class="panel">
+  <form class="filter-grid" method="get" action="/admin/local-tables">
+    <div>
+      <label class="form-label" for="q">Busca por tabela</label>
+      <input class="form-control" id="q" name="q" value="{{ filters.q }}" placeholder="Nome da tabela">
+    </div>
+    <div>
+      <label class="form-label" for="status">Status</label>
+      <select class="form-select" id="status" name="status">
+        <option value="">Todos</option>
+        {% for item in ['Resultado', 'Orfa', 'Sistema', 'Copia GLPI'] %}
+        <option value="{{ item }}" {% if filters.status == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="form-label" for="linked">Vinculo</label>
+      <select class="form-select" id="linked" name="linked">
+        <option value="">Todos</option>
+        <option value="linked" {% if filters.linked == 'linked' %}selected{% endif %}>Vinculadas</option>
+        <option value="orphan" {% if filters.linked == 'orphan' %}selected{% endif %}>Orfas</option>
+      </select>
+    </div>
+    <div class="filter-actions">
+      <button class="btn btn-primary" type="submit">Filtrar</button>
+      <a class="btn btn-outline-secondary" href="/admin/local-tables">Limpar</a>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <form class="row g-2 align-items-end" id="bulkLocalTablesForm" method="post" action="/admin/local-tables/bulk">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="col-md-4">
+      <label class="form-label" for="bulk_action">Acao em massa</label>
+      <select class="form-select" id="bulk_action" name="bulk_action">
+        <option value="">Selecione</option>
+        <option value="export">Exportar selecionadas</option>
+        <option value="clear">Limpar dados das selecionadas</option>
+        <option value="recreate">Recriar selecionadas</option>
+        <option value="delete">Excluir selecionadas</option>
+      </select>
+    </div>
+    <div class="col-md-4" id="bulkConfirmationWrap" hidden>
+      <label class="form-label" for="bulk_confirmation">Confirmacao</label>
+      <input class="form-control" id="bulk_confirmation" name="bulk_confirmation" placeholder="Digite CONFIRMAR">
+    </div>
+    <div class="col-md-2">
+      <div class="result-meta"><span id="selectedCount">0</span> selecionadas</div>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-outline-primary w-100" type="submit">Aplicar</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th style="width: 42px;"><input class="form-check-input" type="checkbox" id="selectAllTables" aria-label="Selecionar todas"></th>
+          <th>Tabela</th>
+          <th>Relatorio vinculado</th>
+          <th>Linhas estimadas</th>
+          <th>Tamanho</th>
+          <th>Ultima atualizacao</th>
+          <th>Ultima execucao</th>
+          <th>Status</th>
+          <th class="text-end">Acoes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for table in tables %}
+        <tr>
+          <td><input class="form-check-input table-checkbox" type="checkbox" name="table_names" value="{{ table.table_name }}" form="bulkLocalTablesForm" aria-label="Selecionar {{ table.table_name }}"></td>
+          <td><code>{{ table.table_name }}</code></td>
+          <td>
+            {% if table.report %}
+              <a href="/reports/{{ table.report.id }}">{{ table.report.name }}</a>
+            {% else %}
+              <span class="muted">Sem vinculo</span>
+            {% endif %}
+          </td>
+          <td>{{ table.estimated_rows }}</td>
+          <td>{{ table.estimated_size_label }}</td>
+          <td>{{ table.updated_at|portal_dt('%d/%m/%Y %H:%M') if table.updated_at else '-' }}</td>
+          <td>{{ table.last_execution.executed_at|portal_dt('%d/%m/%Y %H:%M') if table.last_execution else '-' }}</td>
+          <td>
+            <span class="badge text-bg-{{ 'primary' if table.is_linked else 'warning' if table.is_orphan else 'secondary' }}">
+              {{ 'Vinculada' if table.is_linked else 'Orfa' if table.is_orphan else table.status }}
+            </span>
+          </td>
+          <td class="text-end">
+            <div style="display:flex;gap:4px;align-items:center;justify-content:flex-end;white-space:nowrap">
+              <a href="/admin/local-tables/{{ table.table_name }}" style="background:transparent;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+                <i class="ti ti-eye" style="font-size:13px" aria-hidden="true"></i>
+                Ver
+              </a>
+              <a href="/admin/local-tables/{{ table.table_name }}/export" style="background:#EAF3DE;border:0.5px solid #97C459;color:#3B6D11;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+                <i class="ti ti-file-spreadsheet" style="font-size:13px" aria-hidden="true"></i>
+                Excel
+              </a>
+              <a href="/admin/local-tables/{{ table.table_name }}/history" style="background:transparent;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+                <i class="ti ti-history" style="font-size:13px" aria-hidden="true"></i>
+                Hist.
+              </a>
+              <div style="width:0.5px;height:16px;background:var(--color-border-tertiary);margin:0 4px"></div>
+              <form method="post" action="/admin/local-tables/{{ table.table_name }}/refresh" style="display:inline-flex;margin:0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" title="Atualizar" aria-label="Atualizar" {% if not table.report %}disabled{% endif %} style="background:#E6F1FB;border:0.5px solid #85B7EB;color:#185FA5;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center">
+                  <i class="ti ti-refresh" style="font-size:13px" aria-hidden="true"></i>
+                </button>
+              </form>
+              <form method="post" action="/admin/local-tables/{{ table.table_name }}/clear" style="display:inline-flex;margin:0" onsubmit="return confirm('Limpar todos os dados desta tabela mantendo a estrutura?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" title="Limpar dados" aria-label="Limpar dados" {% if not table.can_modify %}disabled{% endif %} style="background:#FAEEDA;border:0.5px solid #EF9F27;color:#854F0B;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center">
+                  <i class="ti ti-eraser" style="font-size:13px" aria-hidden="true"></i>
+                </button>
+              </form>
+              <form method="post" action="/admin/local-tables/{{ table.table_name }}/recreate" style="display:inline-flex;margin:0" onsubmit="return confirm('Recriar esta tabela a partir do SELECT do relatorio? A tabela atual sera removida antes da nova carga.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" title="Recriar tabela" aria-label="Recriar tabela" {% if not table.report or not table.can_modify %}disabled{% endif %} style="background:#FAEEDA;border:0.5px solid #EF9F27;color:#854F0B;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center">
+                  <i class="ti ti-rotate-clockwise" style="font-size:13px" aria-hidden="true"></i>
+                </button>
+              </form>
+              <form method="post" action="/admin/local-tables/{{ table.table_name }}/delete" style="display:inline-flex;margin:0" data-local-table-delete-form data-table-name="{{ table.table_name }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" title="Excluir tabela" aria-label="Excluir tabela" {% if not table.can_delete %}disabled{% endif %} style="background:#FCEBEB;border:0.5px solid #F09595;color:#A32D2D;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center">
+                  <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="empty-state">Nenhuma tabela local encontrada.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="modal fade" id="deleteDependencyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="deleteDependencyTitle">Confirmar exclusao</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="deleteDependencyBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-outline-danger" id="deleteDependencyConfirm">Excluir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const deleteModalEl = document.getElementById("deleteDependencyModal");
+  const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl) : null;
+  const deleteTitle = document.getElementById("deleteDependencyTitle");
+  const deleteBody = document.getElementById("deleteDependencyBody");
+  const deleteConfirm = document.getElementById("deleteDependencyConfirm");
+  let pendingDeleteForm = null;
+  let pendingDeleteCascade = false;
+
+  function htmlEscape(value) {
+    return String(value ?? "").replace(/[&<>"']/g, function(char) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"}[char];
+    });
+  }
+
+  function submitPendingTableDelete() {
+    if (!pendingDeleteForm) return;
+    if (pendingDeleteCascade) {
+      pendingDeleteForm.action += pendingDeleteForm.action.includes("?") ? "&cascade=1" : "?cascade=1";
+    }
+    pendingDeleteForm.submit();
+  }
+
+  document.querySelectorAll("[data-local-table-delete-form]").forEach(function(form) {
+    form.addEventListener("submit", function(event) {
+      event.preventDefault();
+      const tableName = form.dataset.tableName;
+      fetch("/admin/local-tables/" + encodeURIComponent(tableName) + "/dependencies")
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+          if (!data.success) {
+            alert(data.error || "Nao foi possivel verificar dependencias.");
+            return;
+          }
+          pendingDeleteForm = form;
+          pendingDeleteCascade = data.has_dependencies;
+          deleteTitle.textContent = data.has_dependencies ? "Exclusao com dependencias" : "Confirmar exclusao";
+          if (data.has_dependencies) {
+            deleteBody.innerHTML =
+              "<p><strong>A tabela '" + htmlEscape(tableName) + "' esta sendo usada por:</strong></p>" +
+              "<ul><li>" + data.report_count + " relatorios vinculados</li><li>" + data.source_count + " fontes de dashboard</li><li>" + data.widget_count + " widgets nos dashboards</li></ul>" +
+              "<p>Escolha uma opcao.</p>";
+            deleteConfirm.textContent = "Excluir tabela e todas as referencias";
+          } else {
+            deleteBody.innerHTML =
+              "<p>Confirmar exclusao de '" + htmlEscape(tableName) + "'?</p>" +
+              "<p>Esta tabela nao possui relatorios, fontes ou widgets vinculados.</p>";
+            deleteConfirm.textContent = "Excluir";
+          }
+          deleteModal.show();
+        });
+    });
+  });
+
+  deleteConfirm?.addEventListener("click", function() {
+    if (!pendingDeleteCascade) {
+      submitPendingTableDelete();
+      return;
+    }
+    if (confirm("Confirmar exclusao em cascata? Serao removidos widgets, fontes, vinculos de relatorios e a tabela local. Esta acao nao pode ser desfeita.")) {
+      submitPendingTableDelete();
+    }
+  });
+
+  const bulkAction = document.getElementById("bulk_action");
+  const confirmationWrap = document.getElementById("bulkConfirmationWrap");
+  const confirmationInput = document.getElementById("bulk_confirmation");
+  const selectedCount = document.getElementById("selectedCount");
+  const selectAllTables = document.getElementById("selectAllTables");
+  const tableCheckboxes = Array.from(document.querySelectorAll(".table-checkbox"));
+  const destructiveActions = new Set(["clear", "recreate", "delete"]);
+
+  const updateBulkState = () => {
+    const count = tableCheckboxes.filter((item) => item.checked).length;
+    selectedCount.textContent = count;
+    const destructive = destructiveActions.has(bulkAction.value);
+    confirmationWrap.hidden = !destructive;
+    if (!destructive) confirmationInput.value = "";
+  };
+
+  selectAllTables?.addEventListener("change", () => {
+    tableCheckboxes.forEach((item) => {
+      item.checked = selectAllTables.checked;
+    });
+    updateBulkState();
+  });
+  tableCheckboxes.forEach((item) => item.addEventListener("change", updateBulkState));
+  bulkAction?.addEventListener("change", updateBulkState);
+  document.getElementById("bulkLocalTablesForm")?.addEventListener("submit", (event) => {
+    const count = tableCheckboxes.filter((item) => item.checked).length;
+    if (!bulkAction.value || count === 0) {
+      event.preventDefault();
+      alert("Selecione uma acao e ao menos uma tabela.");
+      return;
+    }
+    if (destructiveActions.has(bulkAction.value)) {
+      const label = bulkAction.options[bulkAction.selectedIndex].text;
+      if (confirmationInput.value !== "CONFIRMAR" || !confirm(`${label}: confirmar acao para ${count} tabelas?`)) {
+        event.preventDefault();
+      }
+    }
+  });
+  updateBulkState();
+</script>
+{% endblock %}

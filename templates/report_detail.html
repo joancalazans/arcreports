@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block content %}
+{% set can_manage_reports = current_user and (current_user.is_admin or current_user.portal_relatorios) %}
+<div class="page-header">
+  <div>
+    <h1>{{ report.name }}</h1>
+    <p>{{ report.description or 'Relatorio cadastrado para execucao manual.' }}</p>
+  </div>
+  <div class="d-flex gap-2">
+    {% if report.destination_table %}
+    <a class="btn btn-outline-success" href="/reports/{{ report.id }}/export">Exportar Excel</a>
+    {% endif %}
+    {% if can_manage_reports %}
+    <a class="btn btn-outline-secondary" href="/reports/{{ report.id }}/edit">Editar</a>
+    {% if report.is_active %}
+    <form method="post" action="/reports/{{ report.id }}/preview">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-outline-primary" type="submit">Visualizar dados</button>
+    </form>
+    {% if report.destination_table %}
+    <button class="btn btn-primary" type="button" onclick='iniciarAtualizacao({{ report.id }}, {{ report.name|tojson }})'>Atualizar tabela</button>
+    {% endif %}
+    {% else %}
+    <button class="btn btn-secondary" type="button" disabled>Relatorio inativo</button>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div id="refresh-status" style="display:none" class="alert alert-info">
+  <i class="ti ti-loader ti-spin" aria-hidden="true"></i>
+  <span id="refresh-status-text">Atualizando...</span>
+</div>
+
+{% if not report.is_active %}
+<div class="alert alert-warning">Este relatorio esta inativo e nao pode ser executado.</div>
+{% endif %}
+
+<section class="panel">
+  <h2>Consulta</h2>
+  {% if report.destination_table %}
+  <div class="result-meta">Tabela destino local: <code>{{ report.destination_table }}</code></div>
+  {% endif %}
+  <div class="result-meta">
+    Tipo: {{ 'Construtor Visual' if report.report_type == 'builder' else 'SQL Manual' }} |
+    Categoria: {{ report.category or 'Sem categoria' }} |
+    Dashboard: {{ 'Sim' if report.show_on_dashboard else 'Nao' }} |
+    Destaque executivo: {{ 'Sim' if report.executive_highlight else 'Nao' }}
+  </div>
+  {% if can_manage_reports %}
+  <pre class="sql-preview">{{ report.sql_query }}</pre>
+  {% endif %}
+</section>
+
+{% if is_preview %}
+<div class="alert alert-info">Visualização prévia — dados não foram salvos na tabela destino.</div>
+{% endif %}
+
+{% if execution %}
+  {% include "_result_panel.html" %}
+{% endif %}
+
+<section class="panel">
+  <div class="panel-header">
+    <h2>Historico do relatorio</h2>
+  </div>
+  {% include "_executions_table.html" %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function iniciarAtualizacao(reportId, nome) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const statusEl = document.getElementById('refresh-status');
+    const statusText = document.getElementById('refresh-status-text');
+    statusEl.style.display = '';
+    statusEl.className = 'alert alert-info';
+    statusText.textContent = 'Iniciando atualizacao...';
+    let executionId;
+    try {
+      const resp = await fetch(`/reports/${reportId}/refresh`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken},
+        body: `csrf_token=${encodeURIComponent(csrfToken)}`,
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        statusEl.className = 'alert alert-danger';
+        statusText.textContent = `Erro: ${data.error}`;
+        return;
+      }
+      executionId = data.execution_id;
+    } catch (err) {
+      statusEl.className = 'alert alert-danger';
+      statusText.textContent = `Erro ao iniciar: ${err.message}`;
+      return;
+    }
+    const startTime = Date.now();
+    const timer = setInterval(async () => {
+      try {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        statusText.textContent = `Atualizando ${nome}... ${elapsed}s`;
+        const resp = await fetch(`/reports/executions/${executionId}/status`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Falha ao consultar status.');
+        if (data.status === 'success') {
+          clearInterval(timer);
+          statusEl.className = 'alert alert-success';
+          statusText.textContent = `✅ ${data.row_count} linhas salvas em ${(data.duration_ms / 1000).toFixed(1)}s`;
+          setTimeout(() => window.location.reload(), 2000);
+        } else if (data.status === 'error') {
+          clearInterval(timer);
+          statusEl.className = 'alert alert-danger';
+          statusText.textContent = `❌ Erro: ${data.error_message}`;
+        }
+      } catch (err) {
+        clearInterval(timer);
+        statusEl.className = 'alert alert-danger';
+        statusText.textContent = `Erro no polling: ${err.message}`;
+      }
+    }, 2000);
+  }
+</script>
+{% endblock %}

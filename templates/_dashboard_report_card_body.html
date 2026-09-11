@@ -1,0 +1,59 @@
+{% set report = item.report %}
+{% set execution = item.last_execution %}
+{% set preview = item.preview %}
+<div class="report-card-body-inner">
+  <div class="report-meta-grid">
+    <div>
+      <span>Ultima execucao</span>
+      <strong>{{ execution.executed_at|portal_dt('%d/%m/%Y %H:%M') if execution else 'Nunca' }}</strong>
+    </div>
+    <div>
+      <span>Status</span>
+      {% set status_name = execution.status if execution else 'pending' %}
+      <strong><span class="status-badge status-{{ status_name }}">{{ status_name }}</span></strong>
+    </div>
+    <div>
+      <span>Registros</span>
+      <strong>{{ execution.row_count if execution else 0 }}</strong>
+    </div>
+    <div>
+      <span>Preview atualizado</span>
+      <strong>{{ preview.updated_at|portal_dt('%d/%m/%Y %H:%M') }}</strong>
+    </div>
+  </div>
+
+  <div class="preview-block">
+    <div class="preview-header">
+      <div>
+        <h3>Preview real da tabela local</h3>
+        {% if report.destination_table %}<code>{{ report.destination_table }}</code>{% endif %}
+      </div>
+      <span>Limite: 5 linhas / 6 colunas</span>
+    </div>
+    {% if preview.message %}
+      <div class="preview-message">{{ preview.message }}</div>
+    {% else %}
+      <div class="table-responsive preview-table-wrap">
+        <table class="table table-sm align-middle preview-table">
+          <thead>
+            <tr>
+              {% for column in preview.columns %}<th>{{ column }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview.rows %}
+            <tr>
+              {% for column in preview.columns %}<td title="{{ row[column] }}">{{ row[column] }}</td>{% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="report-card-actions">
+    <button class="btn btn-outline-primary" type="button" data-report-detail="{{ report.id }}">Ver completo</button>
+    <a class="btn btn-outline-success" href="/reports/{{ report.id }}/export">Exportar Excel</a>
+  </div>
+</div>

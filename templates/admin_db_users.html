@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header" style="align-items:center">
+  <div>
+    <h1>Gestão de Usuários DB</h1>
+    <p>Gerencie acessos de leitura ao banco local.</p>
+  </div>
+  {% if edit_db_user %}
+  <a class="btn btn-outline-secondary btn-sm" href="/admin/db-users">Voltar</a>
+  {% else %}
+  <button class="btn btn-primary btn-sm" type="button" id="toggleDbUserForm">+ Novo usuário DB</button>
+  {% endif %}
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<style>
+  .chip-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    background: var(--color-background-secondary);
+    cursor: pointer;
+  }
+  .chip-checkbox input {
+    margin: 0;
+  }
+  .connector-ghost-btn {
+    background: transparent;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 6px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    min-height: 31px;
+    padding: 5px 12px;
+  }
+  .connector-ghost-btn:hover,
+  .connector-ghost-btn:focus {
+    border-color: #B5D4F4;
+    color: var(--color-text-primary);
+  }
+</style>
+
+{% if edit_db_user %}
+<section style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem">
+  <form method="post" action="/admin/db-users/{{ edit_db_user.id }}/edit">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div style="padding-bottom:8px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:12px">
+      <h2 style="font-size:16px;font-weight:500;color:var(--color-text-primary);margin:0">EDITAR USUÁRIO DE ACESSO AO BANCO</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px">
+      <div>
+        <label class="form-label" for="edit_username">Usuário</label>
+        <input class="form-control" id="edit_username" value="{{ edit_db_user.username }}" readonly disabled>
+      </div>
+      <div>
+        <label class="form-label" for="new_password">Nova senha</label>
+        <input class="form-control" id="new_password" name="new_password" type="password" minlength="8" autocomplete="new-password" placeholder="Deixe vazio para não alterar">
+      </div>
+      <div>
+        <label class="form-label" for="edit_host_ip">IP origem</label>
+        <input class="form-control" id="edit_host_ip" name="host_ip" value="{{ edit_db_user.host_ip }}" readonly>
+        <small class="text-muted">Mudança de IP requer recriar o usuário DB.</small>
+      </div>
+      <div>
+        <label class="form-label">Databases</label>
+        <div class="d-flex gap-2 flex-wrap">
+          {% for database in databases %}
+          <label class="chip-checkbox">
+            <input type="checkbox" name="target_databases" value="{{ database }}" {% if database in selected_databases %}checked{% endif %}>
+            {{ database }}
+          </label>
+          {% endfor %}
+        </div>
+        <small class="text-muted">Selecione uma ou mais databases.</small>
+      </div>
+      <div>
+        <label class="form-label" for="edit_permission">Permissão</label>
+        <input class="form-control" id="edit_permission" value="SELECT (somente leitura)" disabled>
+      </div>
+    </div>
+    {% if edit_db_user.exists_in_mariadb is sameas false %}
+    <div class="alert alert-danger" style="font-size:12px">Este usuário não existe no MariaDB. Remova o registro local pela listagem.</div>
+    {% else %}
+    <div class="alert alert-warning" style="font-size:12px">A edição altera apenas senha e permissões SELECT. O IP de origem é fixo.</div>
+    {% endif %}
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:12px;border-top:0.5px solid var(--color-border-tertiary)">
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/db-users">Cancelar</a>
+      <button class="btn btn-primary btn-sm" type="submit">Salvar alterações</button>
+    </div>
+  </form>
+</section>
+{% else %}
+<section id="dbUserFormPanel" style="display:none;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:1rem">
+  <form method="post" action="/admin/db-users/create">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div style="padding-bottom:8px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:12px">
+      <h2 style="font-size:16px;font-weight:500;color:var(--color-text-primary);margin:0">NOVO USUÁRIO DE ACESSO AO BANCO</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px">
+      <div>
+        <label class="form-label" for="username">Usuário</label>
+        <input class="form-control" id="username" name="username" pattern="[A-Za-z0-9_]+" autocomplete="off" required>
+      </div>
+      <div>
+        <label class="form-label" for="password">Senha</label>
+        <input class="form-control" id="password" name="password" type="password" minlength="8" autocomplete="new-password" required>
+      </div>
+      <div>
+        <label class="form-label" for="host_ip">IP origem</label>
+        <input class="form-control" id="host_ip" name="host_ip" inputmode="numeric" pattern="^(?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$" placeholder="Ex: 192.0.2.10" required>
+      </div>
+      <div>
+        <label class="form-label">Databases</label>
+        <div class="d-flex gap-2 flex-wrap">
+          {% for database in databases %}
+          <label class="chip-checkbox">
+            <input type="checkbox" name="target_databases" value="{{ database }}">
+            {{ database }}
+          </label>
+          {% endfor %}
+        </div>
+        <small class="text-muted">Selecione uma ou mais databases.</small>
+      </div>
+      <div>
+        <label class="form-label" for="permission">Permissão</label>
+        <input class="form-control" id="permission" value="SELECT (somente leitura)" disabled>
+      </div>
+    </div>
+    <div class="alert alert-warning" style="font-size:12px">Acesso somente leitura, restrito ao IP informado.</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:12px;border-top:0.5px solid var(--color-border-tertiary)">
+      <button class="btn btn-outline-secondary btn-sm" type="button" id="cancelDbUserForm">Cancelar</button>
+      <button class="btn btn-primary btn-sm" type="submit">Criar usuário</button>
+    </div>
+  </form>
+</section>
+
+<section style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Usuário</th>
+          <th>IP Origem</th>
+          <th>Databases</th>
+          <th>Criado em</th>
+          <th>Criado por</th>
+          <th>Status</th>
+          <th class="text-end">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for db_user in db_users %}
+        <tr>
+          <td>{{ db_user.username }}</td>
+          <td>{{ db_user.host_ip }}</td>
+          <td>
+            {% for database in db_user.databases %}
+            <span class="badge text-bg-light border">{{ database.target_database }}</span>
+            {% else %}
+            <span class="text-muted">-</span>
+            {% endfor %}
+          </td>
+          <td>{{ db_user.created_at|portal_dt }}</td>
+          <td>{{ db_user.created_by or '-' }}</td>
+          <td>
+            {% if db_user.is_active %}
+            <span class="badge text-bg-success">Ativo</span>
+            {% else %}
+            <span class="badge text-bg-secondary">Inativo (bloqueado)</span>
+            {% endif %}
+            {% if db_user.exists_in_mariadb is sameas false %}
+            <span class="badge text-bg-danger">Não existe no banco</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <a class="connector-ghost-btn text-decoration-none" href="/admin/db-users/{{ db_user.id }}/edit">Editar</a>
+            <form method="post" action="/admin/db-users/{{ db_user.id }}/toggle" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              {% if db_user.is_active %}
+              <button type="submit" style="background:#FAEEDA;border:0.5px solid #E1B967;color:#7A5600;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer">Desativar</button>
+              {% else %}
+              <button type="submit" style="background:#E6F1FB;border:0.5px solid #85B7EB;color:#185FA5;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer">Reativar</button>
+              {% endif %}
+            </form>
+            {% if db_user.exists_in_mariadb is sameas false %}
+            <form method="post" action="/admin/db-users/{{ db_user.id }}/remove" style="display:inline" onsubmit="return confirm('Remover apenas o registro local deste usuário inexistente no MariaDB?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" style="background:#FDE8E8;border:0.5px solid #F2A6A6;color:#9B1C1C;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer">Remover registro</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" class="text-muted">Nenhum usuário DB cadastrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const panel = document.getElementById('dbUserFormPanel');
+    const openButton = document.getElementById('toggleDbUserForm');
+    const cancelButton = document.getElementById('cancelDbUserForm');
+    openButton?.addEventListener('click', () => {
+      if (!panel) return;
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+    cancelButton?.addEventListener('click', () => {
+      if (!panel) return;
+      const form = panel.querySelector('form');
+      form?.reset();
+      panel.style.display = 'none';
+    });
+  });
+</script>
+{% endblock %}

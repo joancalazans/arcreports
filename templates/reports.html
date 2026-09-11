@@ -1,0 +1,703 @@
+{% extends "base.html" %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/tabler-icons/3.35.0/tabler-icons.min.css') }}">
+{% endblock %}
+{% block content %}
+{% set can_manage_reports = current_user and (current_user.is_admin or current_user.portal_relatorios) %}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem">
+  <div>
+    <h1 style="font-size:18px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">
+      Catalogo de Relatorios
+    </h1>
+    <p style="font-size:13px;color:var(--color-text-tertiary);margin:0">
+      Consulte, filtre e administre todos os relatorios cadastrados.
+    </p>
+  </div>
+  {% if can_manage_reports %}
+  <a href="/reports/new" style="font-size:12px;padding:6px 14px;background:#378ADD;color:#fff;border-radius:6px;text-decoration:none;display:flex;align-items:center;gap:6px">
+    <i class="ti ti-plus" style="font-size:13px" aria-hidden="true"></i>
+    Novo relatorio
+  </a>
+  {% endif %}
+</div>
+
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+{% if current_user.is_admin %}
+<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-left:3px solid #378ADD;border-radius:0 var(--border-radius-lg) var(--border-radius-lg) 0;padding:1rem 1.25rem;margin-bottom:1rem">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <i class="ti ti-clock" style="font-size:16px;color:#378ADD" aria-hidden="true"></i>
+      <div>
+        <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:flex;align-items:center;gap:8px">
+          Agendamento automatico
+          {% if schedule_active %}
+          <span style="font-size:10px;padding:2px 7px;background:#EAF3DE;color:#3B6D11;border-radius:10px">Ativo</span>
+          {% else %}
+          <span style="font-size:10px;padding:2px 7px;background:var(--color-background-secondary);color:var(--color-text-secondary);border-radius:10px">Inativo</span>
+          {% endif %}
+        </div>
+        <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:1px">
+          Executa todos os relatorios com tabela destino em fila sequencial
+        </div>
+      </div>
+    </div>
+    {% if can_manage_reports %}
+    <form method="post" action="/reports/schedule-config" id="form-schedule-toggle">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="schedule_hours" value="{{ schedule_hours }}">
+      <input type="hidden" name="schedule_active" value="{{ 'false' if schedule_active else 'true' }}">
+      <button type="submit" style="display:flex;align-items:center;gap:8px;cursor:pointer;background:transparent;border:0;padding:0">
+        <span style="font-size:11px;color:var(--color-text-tertiary)">{{ 'Ativo' if schedule_active else 'Inativo' }}</span>
+        <span style="width:36px;height:20px;border-radius:10px;background:{{ '#1D9E75' if schedule_active else 'var(--color-background-secondary)' }};position:relative;{% if not schedule_active %}border:0.5px solid var(--color-border-tertiary){% endif %}">
+          <span style="width:14px;height:14px;background:#fff;border-radius:50%;position:absolute;top:3px;{{ 'left:19px' if schedule_active else 'left:3px' }}"></span>
+        </span>
+      </button>
+    </form>
+    {% endif %}
+  </div>
+
+  <form method="post" action="/reports/schedule-config" id="form-schedule">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="schedule_active" value="{{ 'true' if schedule_active else 'false' }}">
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:12px;align-items:end;margin-bottom:12px">
+      <div>
+        <label style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">
+          Horarios de execucao
+        </label>
+        <input type="text" name="schedule_hours" value="{{ schedule_hours }}" {% if not can_manage_reports %}readonly{% endif %} style="height:32px;width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:0 10px;font-size:12px">
+        <div style="font-size:10px;color:var(--color-text-tertiary);margin-top:3px">
+          Separados por virgula. Ex: 06:30,13:30
+        </div>
+        <div style="font-size:10px;color:var(--color-text-tertiary);margin-top:3px">
+          {% if etl_wait_before_reports > 0 %}
+          <i class="ti ti-info-circle" style="font-size:11px;color:#378ADD" aria-hidden="true"></i>
+          Relatorios aguardam ate {{ etl_wait_before_reports }} min pelo ETL antes de iniciar.
+          {% else %}
+          <i class="ti ti-alert-triangle" style="font-size:11px;color:#B7791F" aria-hidden="true"></i>
+          Relatorios nao aguardam o ETL. Dados podem estar incompletos.
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Proxima execucao</div>
+        <div style="font-size:14px;font-weight:500;color:var(--color-text-primary);margin-top:4px">{{ next_execution or '-' }}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Na fila</div>
+        <div style="font-size:14px;font-weight:500;color:var(--color-text-primary);margin-top:4px">{{ queue_count }} relatorios</div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Ultima execucao</div>
+        <div style="font-size:14px;font-weight:500;color:#1D9E75;margin-top:4px">{{ last_execution or '-' }}</div>
+      </div>
+    </div>
+    {% if can_manage_reports %}
+    <div style="display:flex;gap:8px;align-items:center">
+      <button type="submit" style="font-size:11px;padding:5px 12px;background:#378ADD;color:#fff;border:none;border-radius:6px;cursor:pointer">Salvar</button>
+    </div>
+    {% endif %}
+    <div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--color-text-tertiary)">
+      <span>
+        <i class="ti ti-star-filled" style="font-size:11px;color:#185FA5" aria-hidden="true"></i>
+        Fase 1:
+        <strong style="color:var(--color-text-primary)">
+          {{ reports|selectattr('is_primary')|selectattr('destination_table')|list|length }} primarios
+        </strong>
+      </span>
+      <span>
+        <i class="ti ti-star" style="font-size:11px" aria-hidden="true"></i>
+        Fase 2:
+        <strong style="color:var(--color-text-primary)">
+          {{ reports|rejectattr('is_primary')|selectattr('destination_table')|list|length }} dependentes
+        </strong>
+      </span>
+    </div>
+  </form>
+
+  {% if can_manage_reports %}
+  <form method="post" action="/reports/schedule-run-now" style="display:inline;margin-left:8px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" style="font-size:11px;padding:5px 12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+      <i class="ti ti-player-play" style="font-size:11px" aria-hidden="true"></i>
+      Executar agora
+    </button>
+  </form>
+  {% endif %}
+
+  <span style="font-size:10px;color:var(--color-text-tertiary);float:right;margin-top:4px">
+    <i class="ti ti-info-circle" style="font-size:11px" aria-hidden="true"></i>
+    GLPI importa as 06:00, 13:00, 20:00
+  </span>
+  <div style="clear:both"></div>
+</div>
+{% endif %}
+
+<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 16px;margin-bottom:1rem">
+  <form method="get" action="/reports">
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end">
+      <div>
+        <label class="form-label" for="search-reports" style="font-size:10px;text-transform:uppercase;letter-spacing:0.04em;color:var(--color-text-tertiary)">Busca por nome</label>
+        <input class="form-control" id="search-reports" name="q" value="{{ filters.q }}" placeholder="Buscar relatorio..." oninput="filterReports(this.value)" style="height:32px;font-size:12px">
+      </div>
+      <div>
+        <label class="form-label" for="category" style="font-size:10px;text-transform:uppercase;letter-spacing:0.04em;color:var(--color-text-tertiary)">Categoria</label>
+        <select class="form-select" id="category" name="category" style="height:32px;font-size:12px;padding-top:4px;padding-bottom:4px">
+          <option value="">Todas</option>
+          {% for item in categories %}
+          <option value="{{ item }}" {% if filters.category == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="status" style="font-size:10px;text-transform:uppercase;letter-spacing:0.04em;color:var(--color-text-tertiary)">Status</label>
+        <select class="form-select" id="status" name="status" style="height:32px;font-size:12px;padding-top:4px;padding-bottom:4px">
+          <option value="">Todos</option>
+          <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Ativos</option>
+          <option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>Inativos</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="dashboard" style="font-size:10px;text-transform:uppercase;letter-spacing:0.04em;color:var(--color-text-tertiary)">Home</label>
+        <select class="form-select" id="dashboard" name="dashboard" style="height:32px;font-size:12px;padding-top:4px;padding-bottom:4px">
+          <option value="">Todos</option>
+          <option value="yes" {% if filters.dashboard == 'yes' %}selected{% endif %}>Mostrar</option>
+          <option value="no" {% if filters.dashboard == 'no' %}selected{% endif %}>Nao mostrar</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button type="submit" style="font-size:11px;padding:6px 12px;background:#378ADD;color:#fff;border:none;border-radius:6px;cursor:pointer">Filtrar</button>
+        <a href="/reports" style="font-size:11px;padding:6px 12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);text-decoration:none">Limpar</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if can_manage_reports %}
+<form id="bulkReportsForm" method="post" action="/reports/bulk" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input class="form-check-input" type="checkbox" id="selectAllReports" aria-label="Selecionar todos">
+  <select class="form-select" id="bulk_action" name="bulk_action" style="width:210px;height:30px;font-size:12px;padding-top:3px;padding-bottom:3px">
+    <option value="">Acao em massa</option>
+    <option value="run">Executar selecionados</option>
+    <option value="clear">Limpar tabelas destino</option>
+    <option value="export">Exportar selecionados</option>
+    <option value="activate">Ativar selecionados</option>
+    <option value="deactivate">Desativar selecionados</option>
+    <option value="delete">Excluir selecionados</option>
+  </select>
+  <div id="bulkConfirmationWrap" hidden>
+    <input class="form-control" id="bulk_confirmation" name="bulk_confirmation" placeholder="Digite CONFIRMAR" style="width:170px;height:30px;font-size:12px">
+  </div>
+  <span style="font-size:11px;color:var(--color-text-tertiary)"><span id="selectedCount">0</span> selecionados</span>
+  <button type="submit" style="font-size:11px;padding:5px 12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:6px;color:var(--color-text-secondary);cursor:pointer">Aplicar</button>
+  <span style="margin-left:auto;font-size:11px;color:var(--color-text-tertiary)">{{ reports|length }} relatorios</span>
+</form>
+{% else %}
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+  <span style="margin-left:auto;font-size:11px;color:var(--color-text-tertiary)">{{ reports|length }} relatorios</span>
+</div>
+{% endif %}
+
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px" id="category-chips">
+  <button type="button" onclick="filterByCategory('')" id="chip-all" class="chip chip-active">Todas</button>
+  {% for cat_name in grouped_reports.keys() %}
+  <button type="button" onclick="filterByCategory({{ cat_name|tojson }})" id="chip-{{ loop.index }}" class="chip" data-category="{{ cat_name }}">
+    {{ cat_name }} ({{ grouped_reports[cat_name]|length }})
+  </button>
+  {% endfor %}
+</div>
+
+<div id="refresh-status" style="display:none;margin-bottom:12px" class="alert alert-info">
+  <i class="ti ti-loader ti-spin" aria-hidden="true"></i>
+  <span id="refresh-status-text">Atualizando...</span>
+</div>
+
+<div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px" id="report-count">
+  {{ reports|length }} relatorios
+</div>
+
+{% for cat_name, cat_reports in grouped_reports.items() %}
+<div class="report-group" data-category="{{ cat_name }}" style="margin-bottom:8px">
+  <div onclick="toggleGroup('{{ loop.index }}')" style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);cursor:pointer;user-select:none">
+    <i id="icon-{{ loop.index }}" class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary);transition:transform 0.2s" aria-hidden="true"></i>
+    <span style="font-size:13px;font-weight:500;color:var(--color-text-primary)">{{ cat_name }}</span>
+    <span style="font-size:11px;padding:1px 7px;border-radius:8px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">
+      {{ cat_reports|length }} relatorios
+    </span>
+  </div>
+
+  <div id="group-{{ loop.index }}" class="group-content" style="border:0.5px solid var(--color-border-tertiary);border-top:none;border-radius:0 0 var(--border-radius-lg) var(--border-radius-lg);overflow:hidden">
+    {% for report in cat_reports %}
+    <div class="report-item" data-name="{{ report.name|lower|e }}" data-desc="{{ report.description|lower|e if report.description else '' }}" style="padding:12px 16px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:12px;{% if not report.destination_table %}opacity:0.65;{% endif %}">
+      {% if can_manage_reports %}
+      <input class="form-check-input report-checkbox" type="checkbox" name="report_ids" value="{{ report.id }}" form="bulkReportsForm" aria-label="Selecionar {{ report.name }}">
+      {% endif %}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ report.name }}</div>
+        {% if report.description %}
+        <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ report.description }}</div>
+        {% endif %}
+        <div style="display:flex;gap:6px;align-items:center;margin-top:5px;flex-wrap:wrap">
+          {% if report.category %}
+          <span style="font-size:10px;padding:2px 7px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:10px;color:var(--color-text-secondary)">{{ report.category }}</span>
+          {% endif %}
+          {% if report.is_active %}
+          <span style="font-size:10px;padding:2px 7px;background:#EAF3DE;color:#3B6D11;border-radius:10px">Ativo</span>
+          {% else %}
+          <span style="font-size:10px;padding:2px 7px;background:var(--color-background-secondary);color:var(--color-text-secondary);border-radius:10px">Inativo</span>
+          {% endif %}
+          {% if report.show_on_dashboard %}
+          <span style="font-size:10px;padding:2px 7px;background:#E6F1FB;color:#185FA5;border-radius:10px">Home</span>
+          {% endif %}
+          {% if report.executive_highlight %}
+          <span style="font-size:10px;padding:2px 7px;background:#FFF5D6;color:#7A5A00;border-radius:10px">Executivo</span>
+          {% endif %}
+          {% if report.destination_table %}
+          <span style="font-size:10px;padding:2px 7px;background:#E6F1FB;color:#185FA5;border-radius:6px">{{ report.destination_table }}</span>
+          {% else %}
+          <span style="font-size:10px;padding:2px 7px;background:var(--color-background-secondary);color:var(--color-text-tertiary);border-radius:6px">sem tabela destino</span>
+          {% endif %}
+        </div>
+        {% if report.created_at or report.updated_at %}
+        <div style="display:flex;gap:12px;margin-top:5px;align-items:center">
+          {% if report.created_at %}
+          <span style="font-size:10px;color:var(--color-text-tertiary);display:flex;align-items:center;gap:3px">
+            <i class="ti ti-calendar-plus" style="font-size:11px" aria-hidden="true"></i>
+            Criado em
+            {{ report.created_at | portal_dt }}
+          </span>
+          {% endif %}
+          {% if report.updated_at and report.updated_at != report.created_at %}
+          <span style="font-size:10px;color:var(--color-text-tertiary);display:flex;align-items:center;gap:3px">
+            <i class="ti ti-edit" style="font-size:11px" aria-hidden="true"></i>
+            Modificado em
+            {{ report.updated_at | portal_dt }}
+          </span>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      <div style="display:flex;gap:5px;align-items:center;flex-shrink:0">
+        {% if can_manage_reports %}
+        <button
+          id="btn-primary-{{ report.id }}"
+          onclick="togglePrimary({{ report.id }})"
+          title="{% if report.is_primary %}Relatorio primario - clique para tornar dependente{% else %}Relatorio dependente - clique para tornar primario{% endif %}"
+          style="font-size:10px;padding:3px 8px;border-radius:6px;cursor:pointer;{% if report.is_primary %}background:#E6F1FB;border:0.5px solid #85B7EB;color:#185FA5;{% else %}background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary);{% endif %}">
+          {% if report.is_primary %}
+          <i class="ti ti-star-filled" style="font-size:10px" aria-hidden="true"></i>
+          Primario
+          {% else %}
+          <i class="ti ti-star" style="font-size:10px" aria-hidden="true"></i>
+          Dependente
+          {% endif %}
+        </button>
+        {% endif %}
+        {% if can_manage_reports %}
+        <button
+          onclick="duplicateReport(
+            {{ report.id }},
+            '{{ report.name|e }}')"
+          title="Duplicar este relatório"
+          style="font-size:11px;padding:4px 8px;
+                 background:transparent;
+                 border:0.5px solid
+                   var(--color-border-secondary);
+                 border-radius:6px;
+                 color:var(--color-text-secondary);
+                 cursor:pointer;
+                 display:flex;align-items:center;
+                 gap:3px">
+          <i class="ti ti-copy"
+             style="font-size:11px"
+             aria-hidden="true"></i>
+          Duplicar
+        </button>
+        {% endif %}
+        <a href="/reports/{{ report.id }}" class="btn-ghost" style="background:transparent;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+          <i class="ti ti-eye" aria-hidden="true"></i>
+          Ver Detalhes
+        </a>
+        {% if can_manage_reports and report.destination_table %}
+        <button type="button" class="btn-primary-soft" data-report-id="{{ report.id }}" data-report-name="{{ report.name|e }}" onclick='iniciarAtualizacao({{ report.id }}, {{ report.name|tojson }})' {% if not report.is_active %}disabled{% endif %} style="background:#E6F1FB;border:0.5px solid #85B7EB;color:#185FA5;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+          <i class="ti ti-refresh" aria-hidden="true"></i>
+          Atualizar
+        </button>
+        {% endif %}
+        {% if report.destination_table %}
+        <a href="/reports/{{ report.id }}/export" title="Excel" aria-label="Excel" style="background:#EAF3DE;border:0.5px solid #97C459;color:#3B6D11;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+          <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
+          Excel
+        </a>
+        {% else %}
+        <button type="button" title="Excel indisponivel sem tabela destino" aria-label="Excel indisponivel sem tabela destino" disabled style="background:#EAF3DE;border:0.5px solid #97C459;color:#3B6D11;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;opacity:0.55">
+          <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
+          Excel
+        </button>
+        {% endif %}
+        {% if can_manage_reports %}
+        <a href="/reports/{{ report.id }}/edit" title="Editar" aria-label="Editar" style="background:transparent;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+          <i class="ti ti-edit" aria-hidden="true"></i>
+          Editar
+        </a>
+        <form method="post" action="/reports/{{ report.id }}/delete" style="display:inline" data-report-delete-form data-report-id="{{ report.id }}" data-report-name="{{ report.name|e }}" data-report-table="{{ report.destination_table or '' }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" title="Excluir" aria-label="Excluir" style="background:#FCEBEB;border:0.5px solid #F09595;color:#A32D2D;font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+            <i class="ti ti-trash" aria-hidden="true"></i>
+            Excluir
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:24px">Nenhum relatorio encontrado.</div>
+{% endfor %}
+
+<script>
+  async function iniciarAtualizacao(reportId, nome) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const statusEl = document.getElementById('refresh-status');
+    const statusText = document.getElementById('refresh-status-text');
+    if (statusEl) {
+      statusEl.style.display = '';
+      statusEl.className = 'alert alert-info';
+    }
+    if (statusText) statusText.textContent = 'Iniciando atualizacao...';
+    let executionId;
+    try {
+      const resp = await fetch(`/reports/${reportId}/refresh`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken},
+        body: `csrf_token=${encodeURIComponent(csrfToken)}`,
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        if (statusEl) statusEl.className = 'alert alert-danger';
+        if (statusText) statusText.textContent = `Erro: ${data.error}`;
+        return;
+      }
+      executionId = data.execution_id;
+    } catch (err) {
+      if (statusEl) statusEl.className = 'alert alert-danger';
+      if (statusText) statusText.textContent = `Erro ao iniciar: ${err.message}`;
+      return;
+    }
+    const startTime = Date.now();
+    const timer = setInterval(async () => {
+      try {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        if (statusText) statusText.textContent = `Atualizando ${nome}... ${elapsed}s`;
+        const resp = await fetch(`/reports/executions/${executionId}/status`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Falha ao consultar status.');
+        if (data.status === 'success') {
+          clearInterval(timer);
+          if (statusEl) statusEl.className = 'alert alert-success';
+          if (statusText) statusText.textContent = `✅ ${data.row_count} linhas salvas em ${(data.duration_ms / 1000).toFixed(1)}s`;
+          setTimeout(() => window.location.reload(), 2000);
+        } else if (data.status === 'error') {
+          clearInterval(timer);
+          if (statusEl) statusEl.className = 'alert alert-danger';
+          if (statusText) statusText.textContent = `❌ Erro: ${data.error_message}`;
+        }
+      } catch (err) {
+        clearInterval(timer);
+        if (statusEl) statusEl.className = 'alert alert-danger';
+        if (statusText) statusText.textContent = `Erro no polling: ${err.message}`;
+      }
+    }, 2000);
+  }
+
+  var activeCategory = "";
+  var currentSearchTerm = "";
+  var searchTimeout;
+
+  function updateReportCount() {
+    var count = Array.from(document.querySelectorAll(".report-item"))
+      .filter(function(item) {
+        return item.style.display !== "none"
+          && item.closest(".report-group")?.style.display !== "none";
+      }).length;
+    var label = count === 1 ? " relatorio" : " relatorios";
+    var counter = document.getElementById("report-count");
+    if (counter) counter.textContent = count + label;
+  }
+
+  function applyReportFilters() {
+    var term = currentSearchTerm.toLowerCase().trim();
+    document.querySelectorAll(".report-group").forEach(function(group) {
+      var categoryMatches = !activeCategory
+        || group.dataset.category === activeCategory;
+      var hasVisible = false;
+
+      group.querySelectorAll(".report-item").forEach(function(item) {
+        var name = (item.dataset.name || "").toLowerCase();
+        var desc = (item.dataset.desc || "").toLowerCase();
+        var textMatches = !term
+          || name.includes(term)
+          || desc.includes(term);
+        var visible = categoryMatches && textMatches;
+        item.style.display = visible ? "flex" : "none";
+        if (visible) hasVisible = true;
+      });
+
+      group.style.display = hasVisible ? "block" : "none";
+      if (hasVisible && term) {
+        var content = group.querySelector(".group-content");
+        if (content) content.style.display = "block";
+      }
+    });
+    updateReportCount();
+  }
+
+  function toggleGroup(index) {
+    var content = document.getElementById("group-" + index);
+    var icon = document.getElementById("icon-" + index);
+    var isOpen = content.style.display !== "none";
+    content.style.display = isOpen ? "none" : "block";
+    icon.style.transform = isOpen ? "rotate(-90deg)" : "rotate(0deg)";
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    var groups = document.querySelectorAll(".group-content");
+    groups.forEach(function(group, index) {
+      if (index > 0 && groups.length > 3) {
+        group.style.display = "none";
+        var icon = document.getElementById("icon-" + (index + 1));
+        if (icon) icon.style.transform = "rotate(-90deg)";
+      }
+    });
+    updateReportCount();
+  });
+
+  function filterByCategory(catName) {
+    activeCategory = catName || "";
+    document.querySelectorAll(".chip").forEach(function(chip) {
+      chip.classList.remove("chip-active");
+      if ((!activeCategory && chip.id === "chip-all")
+          || chip.dataset.category === activeCategory) {
+        chip.classList.add("chip-active");
+      }
+    });
+    applyReportFilters();
+  }
+
+  function filterReports(q) {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(function() {
+      currentSearchTerm = q || "";
+      applyReportFilters();
+    }, 250);
+  }
+</script>
+
+{% if can_manage_reports %}
+<div class="modal fade" id="deleteDependencyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="deleteDependencyTitle">Confirmar exclusao</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="deleteDependencyBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-outline-danger" id="deleteDependencyConfirm">Excluir</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function duplicateReport(reportId, name) {
+    if (!confirm(
+      'Duplicar o relatório "' + name + '"?\n'
+      + 'Uma cópia inativa será criada para '
+      + 'você editar.'
+    )) return;
+
+    fetch('/reports/' + reportId +
+          '/duplicate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': document.querySelector(
+          'meta[name="csrf-token"]'
+        )?.content || ''
+      }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        if (confirm(
+          'Relatório duplicado com sucesso!\n'
+          + '"' + data.new_name + '"\n\n'
+          + 'Abrir para editar agora?'
+        )) {
+          window.location.href = data.redirect;
+        } else {
+          window.location.reload();
+        }
+      } else {
+        alert('Erro ao duplicar relatório.');
+      }
+    })
+    .catch(function(e) {
+      alert('Erro: ' + e.message);
+    });
+  }
+
+  function togglePrimary(reportId) {
+    var btn = document.getElementById(
+      "btn-primary-" + reportId
+    );
+    btn.disabled = true;
+
+    fetch("/reports/" + reportId +
+          "/toggle-primary", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": document.querySelector(
+          'meta[name="csrf-token"]'
+        )?.content || ""
+      }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        var isPrimary = data.is_primary;
+        btn.style.background = isPrimary
+          ? "#E6F1FB" : "var(--color-background-secondary)";
+        btn.style.borderColor = isPrimary
+          ? "#85B7EB"
+          : "var(--color-border-tertiary)";
+        btn.style.color = isPrimary
+          ? "#185FA5"
+          : "var(--color-text-tertiary)";
+        btn.title = isPrimary
+          ? "Relatorio primario - clique para tornar dependente"
+          : "Relatorio dependente - clique para tornar primario";
+        btn.innerHTML = isPrimary
+          ? '<i class="ti ti-star-filled" style="font-size:10px" aria-hidden="true"></i> Primario'
+          : '<i class="ti ti-star" style="font-size:10px" aria-hidden="true"></i> Dependente';
+      }
+    })
+    .catch(function(e) {
+      console.error("Erro toggle primary:", e);
+    })
+    .finally(function() {
+      btn.disabled = false;
+    });
+  }
+
+  const deleteModalEl = document.getElementById("deleteDependencyModal");
+  const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl) : null;
+  const deleteTitle = document.getElementById("deleteDependencyTitle");
+  const deleteBody = document.getElementById("deleteDependencyBody");
+  const deleteConfirm = document.getElementById("deleteDependencyConfirm");
+  let pendingDeleteForm = null;
+  let pendingDeleteCascade = false;
+
+  function htmlEscape(value) {
+    return String(value ?? "").replace(/[&<>"']/g, function(char) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"}[char];
+    });
+  }
+
+  function submitPendingReportDelete() {
+    if (!pendingDeleteForm) return;
+    if (pendingDeleteCascade) {
+      pendingDeleteForm.action += pendingDeleteForm.action.includes("?") ? "&cascade=1" : "?cascade=1";
+    }
+    pendingDeleteForm.submit();
+  }
+
+  document.querySelectorAll("[data-report-delete-form]").forEach(function(form) {
+    form.addEventListener("submit", function(event) {
+      event.preventDefault();
+      fetch("/reports/" + form.dataset.reportId + "/dependencies")
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+          if (!data.success) {
+            alert(data.error || "Nao foi possivel verificar dependencias.");
+            return;
+          }
+          pendingDeleteForm = form;
+          pendingDeleteCascade = data.has_dependencies;
+          deleteTitle.textContent = data.has_dependencies ? "Exclusao com dependencias" : "Confirmar exclusao";
+          if (data.has_dependencies) {
+            deleteBody.innerHTML =
+              "<p><strong>O relatorio '" + htmlEscape(form.dataset.reportName) + "' nao pode ser excluido normalmente.</strong></p>" +
+              "<p>A tabela '" + htmlEscape(form.dataset.reportTable || "-") + "' esta vinculada a:</p>" +
+              "<ul><li>" + data.source_count + " fontes de dashboard</li><li>" + data.widget_count + " widgets nos dashboards</li></ul>" +
+              "<p>Escolha uma opcao.</p>";
+            deleteConfirm.textContent = "Excluir relatorio, fontes e widgets vinculados";
+          } else {
+            deleteBody.innerHTML =
+              "<p>Confirmar exclusao de '" + htmlEscape(form.dataset.reportName) + "'?</p>" +
+              "<p>Este relatorio nao possui fontes ou widgets vinculados.</p>";
+            deleteConfirm.textContent = "Excluir";
+          }
+          deleteModal.show();
+        });
+    });
+  });
+
+  deleteConfirm?.addEventListener("click", function() {
+    if (!pendingDeleteCascade) {
+      submitPendingReportDelete();
+      return;
+    }
+    if (confirm("Confirmar exclusao em cascata? Serao removidos permanentemente o relatorio, as fontes e os widgets vinculados. Esta acao nao pode ser desfeita.")) {
+      submitPendingReportDelete();
+    }
+  });
+
+  const bulkAction = document.getElementById("bulk_action");
+  const confirmationWrap = document.getElementById("bulkConfirmationWrap");
+  const confirmationInput = document.getElementById("bulk_confirmation");
+  const selectedCount = document.getElementById("selectedCount");
+  const selectAllReports = document.getElementById("selectAllReports");
+  const reportCheckboxes = Array.from(document.querySelectorAll(".report-checkbox"));
+  const destructiveActions = new Set(["clear", "delete"]);
+
+  const updateBulkState = () => {
+    const count = reportCheckboxes.filter((item) => item.checked).length;
+    selectedCount.textContent = count;
+    const destructive = destructiveActions.has(bulkAction.value);
+    confirmationWrap.hidden = !destructive;
+    if (!destructive) confirmationInput.value = "";
+  };
+
+  selectAllReports?.addEventListener("change", () => {
+    reportCheckboxes.forEach((item) => {
+      item.checked = selectAllReports.checked;
+    });
+    updateBulkState();
+  });
+  reportCheckboxes.forEach((item) => item.addEventListener("change", updateBulkState));
+  bulkAction?.addEventListener("change", updateBulkState);
+  document.getElementById("bulkReportsForm")?.addEventListener("submit", (event) => {
+    const count = reportCheckboxes.filter((item) => item.checked).length;
+    if (!bulkAction.value || count === 0) {
+      event.preventDefault();
+      alert("Selecione uma acao e ao menos um relatorio.");
+      return;
+    }
+    if (destructiveActions.has(bulkAction.value)) {
+      const label = bulkAction.options[bulkAction.selectedIndex].text;
+      if (confirmationInput.value !== "CONFIRMAR" || !confirm(`${label}: confirmar acao para ${count} relatorios?`)) {
+        event.preventDefault();
+      }
+    }
+  });
+  updateBulkState();
+</script>
+{% endif %}
+{% endblock %}

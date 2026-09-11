@@ -338,6 +338,7 @@ create_service_user() {
 }
 
 create_install_dir() {
+    mkdir -p /opt/sites
     if [[ -d "$INSTALL_DIR" ]]; then
         ok "Diretório $INSTALL_DIR já existe"
     else

@@ -50,8 +50,7 @@ A instalação é totalmente automatizada. O script deve ser executado como root
 **Instalação em 3 comandos:**
 
 ```bash
-git clone https://github.com/joancalazans/arcreports.git \
-  /opt/sites/arcreports
+git clone https://github.com/joancalazans/arcreports.git /opt/sites/arcreports
 cd /opt/sites/arcreports
 sudo bash install.sh
 ```
@@ -239,8 +238,7 @@ Installation is fully automated. The script must be run as root on a clean serve
 **Installation in 3 commands:**
 
 ```bash
-git clone https://github.com/joancalazans/arcreports.git \
-  /opt/sites/arcreports
+git clone https://github.com/joancalazans/arcreports.git /opt/sites/arcreports
 cd /opt/sites/arcreports
 sudo bash install.sh
 ```

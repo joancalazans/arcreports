@@ -7,8 +7,8 @@ Executar como: python docs/migrate_passwords_encrypt.py
 import os
 import sys
 
-sys.path.insert(0, "/opt/sites/glpi-portal")
-os.chdir("/opt/sites/glpi-portal")
+sys.path.insert(0, "/opt/sites/arcreports")
+os.chdir("/opt/sites/arcreports")
 
 from app.config import settings
 from app.crypto import encrypt_password, is_encrypted

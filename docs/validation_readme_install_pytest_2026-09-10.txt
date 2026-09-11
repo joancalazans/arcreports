@@ -5,7 +5,7 @@
 ........................................                                 [100%]
 =============================== warnings summary ===============================
 app/main.py:993
-  /opt/sites/glpi-portal/app/main.py:993: DeprecationWarning: 
+  /opt/sites/arcreports/app/main.py:993: DeprecationWarning:
           on_event is deprecated, use lifespan event handlers instead.
   
           Read more about it in the
@@ -15,7 +15,7 @@ app/main.py:993
 
 venv/lib64/python3.9/site-packages/fastapi/applications.py:4579
 venv/lib64/python3.9/site-packages/fastapi/applications.py:4579
-  /opt/sites/glpi-portal/venv/lib64/python3.9/site-packages/fastapi/applications.py:4579: DeprecationWarning: 
+  /opt/sites/arcreports/venv/lib64/python3.9/site-packages/fastapi/applications.py:4579: DeprecationWarning:
           on_event is deprecated, use lifespan event handlers instead.
   
           Read more about it in the
@@ -24,7 +24,7 @@ venv/lib64/python3.9/site-packages/fastapi/applications.py:4579
     return self.router.on_event(event_type)
 
 app/main.py:1071
-  /opt/sites/glpi-portal/app/main.py:1071: DeprecationWarning: 
+  /opt/sites/arcreports/app/main.py:1071: DeprecationWarning:
           on_event is deprecated, use lifespan event handlers instead.
   
           Read more about it in the

@@ -24,7 +24,7 @@ Nenhum arquivo em `app/` ou outro código da aplicação foi alterado.
 
 1. Confirma execução como root e seleciona automaticamente nova instalação quando não há artefatos anteriores.
 2. Verifica cada pré-requisito; instala via `dnf` e valida novamente quando necessário.
-3. Cria `ia-dev` e `/opt/sites/glpi-portal` quando ausentes.
+3. Cria `ia-dev` e `/opt/sites/arcreports` quando ausentes.
 4. Prepara venv, `.env`, `local.env`, `ldap.env` e diretórios persistentes como `ia-dev`.
 5. Solicita a credencial root do MariaDB local, cria banco/contas apenas se ausentes e aplica grants idempotentes.
 6. Registra `alembic stamp head` apenas para banco criado nessa instalação.

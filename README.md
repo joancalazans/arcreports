@@ -51,8 +51,8 @@ A instalação é totalmente automatizada. O script deve ser executado como root
 
 ```bash
 git clone https://github.com/joancalazans/arcreports.git \
-  /opt/sites/glpi-portal
-cd /opt/sites/glpi-portal
+  /opt/sites/arcreports
+cd /opt/sites/arcreports
 sudo bash install.sh
 ```
 
@@ -164,7 +164,7 @@ Exportações individuais e em massa validam categoria antes de ler os resultado
 
 ### Backup e recuperação
 
-Snapshots SQL de `reports` ficam em `/opt/sites/glpi-portal/snapshots/`. A aplicação usa `mysqldump`, grava temporário, verifica o marcador `-- Dump completed` e publica o arquivo final por renomeação. Também é possível solicitar snapshot pela Saúde do Sistema. Os nomes usam UTC; o job usa horário de São Paulo.
+Snapshots SQL de `reports` ficam em `/opt/sites/arcreports/snapshots/`. A aplicação usa `mysqldump`, grava temporário, verifica o marcador `-- Dump completed` e publica o arquivo final por renomeação. Também é possível solicitar snapshot pela Saúde do Sistema. Os nomes usam UTC; o job usa horário de São Paulo.
 
 A retenção por quantidade e tamanho pode remover até o snapshot mais recente; não significa dez dias garantidos. Mantenha cópias externas. Esses dumps não incluem automaticamente as réplicas, grants/contas, `.env`, `local.env`, `ldap.env`, uploads nem código: guarde-os separadamente. A opção `--routines --triggers` do dump pode exigir privilégios adicionais no MariaDB; os grants mínimos solicitados não incluem esses privilégios. Homologue o snapshot no servidor e ajuste a política com o DBA, sem ampliar grants silenciosamente.
 
@@ -240,8 +240,8 @@ Installation is fully automated. The script must be run as root on a clean serve
 
 ```bash
 git clone https://github.com/joancalazans/arcreports.git \
-  /opt/sites/glpi-portal
-cd /opt/sites/glpi-portal
+  /opt/sites/arcreports
+cd /opt/sites/arcreports
 sudo bash install.sh
 ```
 
@@ -353,7 +353,7 @@ Individual and bulk exports validate categories before reading results; denials 
 
 ### Backup and recovery
 
-SQL snapshots of `reports` are stored in `/opt/sites/glpi-portal/snapshots/`. The application uses `mysqldump`, writes a temporary file, checks the `-- Dump completed` marker and publishes the final file by renaming. Manual snapshots are also available through System Health. Filenames use UTC; the job uses São Paulo time.
+SQL snapshots of `reports` are stored in `/opt/sites/arcreports/snapshots/`. The application uses `mysqldump`, writes a temporary file, checks the `-- Dump completed` marker and publishes the final file by renaming. Manual snapshots are also available through System Health. Filenames use UTC; the job uses São Paulo time.
 
 Count and size retention may remove even the newest snapshot; it does not guarantee ten days. Keep external copies. Dumps do not automatically include replicas, grants/accounts, `.env`, `local.env`, `ldap.env`, uploads or code: back those up separately. Dump options `--routines --triggers` may require additional MariaDB privileges; the requested minimum grants do not include them. Qualify snapshot creation on the server and review policy with the DBA without silently expanding grants.
 

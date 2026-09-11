@@ -9,9 +9,9 @@ After=network.target mariadb.service
 Type=simple
 User=ia-dev
 Group=ia-dev
-WorkingDirectory=/opt/sites/glpi-portal
+WorkingDirectory=/opt/sites/arcreports
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/sites/glpi-portal/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
+ExecStart=/opt/sites/arcreports/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=on-failure
 RestartSec=5
 UMask=0077

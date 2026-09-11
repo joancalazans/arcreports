@@ -31,7 +31,7 @@ from app.system_config import set_system_config_value
 from app.timezone import format_datetime_portal, format_local_datetime
 
 
-LOG_DIR = Path("/opt/sites/glpi-portal/logs")
+LOG_DIR = Path(__file__).resolve().parents[1] / "logs"
 LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 

@@ -1,8 +1,10 @@
 #!/bin/bash
 # ArcReports — Instalador híbrido
-# Verifica, instala e configura tudo
-# Compatível com RHEL 9.x / Rocky / Alma
+# Suportado: RHEL 9.x, Rocky 9, AlmaLinux 9,
+#            Fedora 38+, Ubuntu 22.04+,
+#            Ubuntu 24.04, Debian 11, Debian 12
 # Uso: sudo bash install.sh
+# Documentação: README.md
 set -euo pipefail
 
 umask 077
@@ -13,7 +15,16 @@ DB_APP_USER="glpi_portal"
 DB_ADMIN_USER="portal_db_admin"
 DB_USER_ADMIN="portal_db_user"
 INSTALL_MODE=""
+FAMILY=""
+PKG_MANAGER=""
 PYTHON_BIN=""
+SERVICE_MARIADB="mariadb"
+NGINX_CONF_DIR=""
+NGINX_CONF_AVAILABLE=""
+NGINX_CONF_ENABLED=""
+NGINX_CONF=""
+SELINUX_ACTIVE=false
+APT_UPDATED=0
 DATABASE_IS_NEW=0
 MARIADB_INSTALLED_NOW=0
 NGINX_INSTALLED_NOW=0
@@ -63,13 +74,94 @@ extract_mariadb_version() {
     fi
 }
 
-dnf_install() {
-    command -v dnf >/dev/null 2>&1 || fail "dnf ausente. Este instalador requer RHEL 9.x, Rocky Linux ou AlmaLinux."
-    dnf install -y "$@"
+detect_distribution() {
+    [[ -r /etc/os-release ]] || fail "Não foi possível ler /etc/os-release."
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    : "${ID:?ID ausente em /etc/os-release}"
+    : "${VERSION_ID:?VERSION_ID ausente em /etc/os-release}"
+
+    case "$ID" in
+        rhel|rocky|almalinux)
+            version_ge "$VERSION_ID" 9 || fail "$NAME $VERSION_ID não suportado. Requer versão 9 ou superior."
+            FAMILY="rhel"
+            PKG_MANAGER="dnf"
+            ;;
+        fedora)
+            version_ge "$VERSION_ID" 38 || fail "$NAME $VERSION_ID não suportado. Requer Fedora 38 ou superior."
+            FAMILY="rhel"
+            PKG_MANAGER="dnf"
+            ;;
+        ubuntu)
+            version_ge "$VERSION_ID" 22.04 || fail "$NAME $VERSION_ID não suportado. Requer Ubuntu 22.04 ou superior."
+            FAMILY="debian"
+            PKG_MANAGER="apt-get"
+            ;;
+        debian)
+            version_ge "$VERSION_ID" 11 || fail "$NAME $VERSION_ID não suportado. Requer Debian 11 ou superior."
+            FAMILY="debian"
+            PKG_MANAGER="apt-get"
+            ;;
+        *)
+            fail "Distribuição '$ID' não suportada.
+Suportadas: RHEL 9.x, Rocky 9, AlmaLinux 9,
+Fedora 38+, Ubuntu 22.04+, Debian 11/12."
+            ;;
+    esac
+
+    if [[ "$FAMILY" == rhel ]]; then
+        NGINX_CONF_DIR="/etc/nginx/conf.d"
+        NGINX_CONF="$NGINX_CONF_DIR/arcreports.conf"
+    else
+        NGINX_CONF_AVAILABLE="/etc/nginx/sites-available"
+        NGINX_CONF_ENABLED="/etc/nginx/sites-enabled"
+        NGINX_CONF="$NGINX_CONF_AVAILABLE/arcreports"
+    fi
+
+    ok "Distribuição detectada: ${NAME:-$ID} $VERSION_ID"
+    ok "Família: $FAMILY (gerenciador: $PKG_MANAGER)"
+}
+
+apt_update() {
+    if (( ! APT_UPDATED )); then
+        apt-get update -qq
+        APT_UPDATED=1
+    fi
+}
+
+package_install() {
+    if [[ "$FAMILY" == rhel ]]; then
+        command -v dnf >/dev/null 2>&1 || fail "dnf não está disponível nesta distribuição."
+        dnf install -y "$@"
+    else
+        command -v apt-get >/dev/null 2>&1 || fail "apt-get não está disponível nesta distribuição."
+        apt_update
+        apt-get install -y "$@"
+    fi
 }
 
 check_or_install_python() {
     local output="" version="" install_needed=0
+    if [[ "$FAMILY" == debian ]]; then
+        if ! command -v python3.9 >/dev/null 2>&1; then
+            apt_update
+            if [[ "$ID" == ubuntu ]] && ! apt-cache show python3.9 >/dev/null 2>&1; then
+                warn "Python 3.9 ausente nos repositórios — habilitando deadsnakes PPA."
+                package_install software-properties-common
+                add-apt-repository ppa:deadsnakes/ppa -y
+                APT_UPDATED=0
+                apt_update
+            fi
+            package_install python3.9 python3-pip python3.9-venv python3-venv
+        else
+            package_install python3-pip python3.9-venv python3-venv
+        fi
+        python3.9 --version >/dev/null 2>&1 || fail "Python 3.9 não disponível."
+        PYTHON_BIN="$(command -v python3.9)"
+        ok "Python 3.9 instalado"
+        return
+    fi
+
     if command -v python3 >/dev/null 2>&1; then
         output="$(python3 --version 2>&1)"
         version="$(extract_version "$output" || true)"
@@ -79,18 +171,18 @@ check_or_install_python() {
     fi
     if (( install_needed )); then
         warn "Python ${version:-não encontrado} — instalando Python 3.9+."
-        dnf_install python39 python3-pip
+        package_install python3.9 python3-pip
     fi
     if command -v python3.9 >/dev/null 2>&1; then
         PYTHON_BIN="$(command -v python3.9)"
     else
         PYTHON_BIN="$(command -v python3 || true)"
     fi
-    [[ -n "$PYTHON_BIN" ]] || fail "Python não ficou disponível após dnf."
+    [[ -n "$PYTHON_BIN" ]] || fail "Python não ficou disponível após $PKG_MANAGER."
     output="$($PYTHON_BIN --version 2>&1)"
     version="$(extract_version "$output" || true)"
     [[ -n "$version" ]] && version_ge "$version" 3.9 || fail "Python 3.9+ indisponível (detectado: $output)."
-    ok "Python $version encontrado"
+    ok "Python 3.9 instalado (comando: $PYTHON_BIN, versão: $version)"
 }
 
 secure_new_mariadb() {
@@ -117,21 +209,29 @@ check_or_install_mariadb() {
     fi
     if (( install_needed )); then
         warn "MariaDB ${version:-não encontrado} — instalando MariaDB 10.5+."
-        dnf_install mariadb-server mariadb
+        if [[ "$FAMILY" == rhel ]]; then
+            package_install mariadb-server mariadb
+        else
+            package_install mariadb-server
+        fi
         MARIADB_INSTALLED_NOW=1
     fi
     mysql_client="$(command -v mysql || true)"
-    [[ -n "$mysql_client" ]] || fail "mysql não ficou disponível após dnf."
+    [[ -n "$mysql_client" ]] || fail "mysql não ficou disponível após $PKG_MANAGER."
     output="$($mysql_client --version 2>&1)"
     version="$(extract_mariadb_version "$output" || true)"
     [[ -n "$version" ]] && version_ge "$version" 10.5 || fail "MariaDB 10.5+ indisponível (detectado: $output)."
-    systemctl enable --now mariadb
-    systemctl is-active --quiet mariadb || fail "MariaDB não iniciou. Consulte: journalctl -u mariadb"
+    SERVICE_MARIADB="mariadb"
+    if [[ "$FAMILY" == debian ]]; then
+        systemctl list-units --type=service | grep -q mariadb || SERVICE_MARIADB="mysql"
+    fi
+    systemctl enable --now "$SERVICE_MARIADB"
+    systemctl is-active --quiet "$SERVICE_MARIADB" || fail "MariaDB não iniciou. Consulte: journalctl -u $SERVICE_MARIADB"
     if (( MARIADB_INSTALLED_NOW )); then
         secure_new_mariadb "$mysql_client"
-        ok "MariaDB $version instalado com sucesso"
+        ok "MariaDB instalado e ativo (versão $version)"
     else
-        ok "MariaDB $version encontrado e serviço ativo"
+        ok "MariaDB instalado e ativo (versão $version já existente)"
     fi
 }
 
@@ -146,24 +246,24 @@ check_or_install_nginx() {
     fi
     if (( install_needed )); then
         warn "Nginx ${version:-não encontrado} — instalando Nginx 1.18+."
-        dnf_install nginx
+        package_install nginx
         NGINX_INSTALLED_NOW=1
     fi
-    command -v nginx >/dev/null 2>&1 || fail "nginx não ficou disponível após dnf."
+    command -v nginx >/dev/null 2>&1 || fail "nginx não ficou disponível após $PKG_MANAGER."
     output="$(nginx -v 2>&1)"
     version="$(extract_version "$output" || true)"
     [[ -n "$version" ]] && version_ge "$version" 1.18 || fail "Nginx 1.18+ indisponível (detectado: $output)."
     systemctl enable --now nginx
     systemctl is-active --quiet nginx || fail "Nginx não iniciou. Consulte: journalctl -u nginx"
-    (( NGINX_INSTALLED_NOW )) && ok "Nginx $version instalado com sucesso" || ok "Nginx $version encontrado e serviço ativo"
+    (( NGINX_INSTALLED_NOW )) && ok "Nginx instalado e ativo (versão $version)" || ok "Nginx instalado e ativo (versão $version já existente)"
 }
 
 check_or_install_git() {
     if command -v git >/dev/null 2>&1; then
         ok "Git encontrado ($(git --version))"
     else
-        dnf_install git
-        command -v git >/dev/null 2>&1 || fail "Git não ficou disponível após dnf."
+        package_install git
+        command -v git >/dev/null 2>&1 || fail "Git não ficou disponível após $PKG_MANAGER."
         ok "Git instalado com sucesso ($(git --version))"
     fi
 }
@@ -172,8 +272,8 @@ check_or_install_curl() {
     if command -v curl >/dev/null 2>&1; then
         ok "curl encontrado"
     else
-        dnf_install curl
-        command -v curl >/dev/null 2>&1 || fail "curl não ficou disponível após dnf."
+        package_install curl
+        command -v curl >/dev/null 2>&1 || fail "curl não ficou disponível após $PKG_MANAGER."
         ok "curl instalado com sucesso"
     fi
 }
@@ -183,7 +283,11 @@ check_or_install_mysqldump() {
         ok "mysqldump encontrado"
     else
         warn "mysqldump ausente — instalando o cliente MariaDB."
-        dnf_install mariadb
+        if [[ "$FAMILY" == rhel ]]; then
+            package_install mariadb
+        else
+            package_install mariadb-client
+        fi
         command -v mysqldump >/dev/null 2>&1 || fail "mysqldump não ficou disponível com o pacote mariadb."
         ok "mysqldump instalado com sucesso"
     fi
@@ -394,7 +498,7 @@ setup_alembic() {
 
 # --- Configurar Nginx ---
 setup_nginx() {
-    local source="$INSTALL_DIR/docs/nginx.example.conf" target="/etc/nginx/conf.d/arcreports.conf" replace=0 answer
+    local source="$INSTALL_DIR/docs/nginx.example.conf" target="$NGINX_CONF" replace=0 answer
     if [[ ! -f "$target" ]]; then
         replace=1
     elif [[ "$INSTALL_MODE" == update ]]; then
@@ -407,8 +511,46 @@ setup_nginx() {
         [[ ! -f "$target" ]] || cp -a "$target" "${target}.bak.$(date +%Y%m%d%H%M%S)"
         install -o root -g root -m 0644 "$source" "$target"; ok "Configuração Nginx instalada"
     fi
+    if [[ "$FAMILY" == debian ]]; then
+        ln -sf "$NGINX_CONF" "$NGINX_CONF_ENABLED/arcreports"
+        rm -f /etc/nginx/sites-enabled/default
+    fi
     nginx -t || fail "nginx -t falhou. Revise $target antes de recarregar."
     systemctl reload nginx; ok "Nginx validado e recarregado"
+}
+
+# --- Controles de segurança específicos da distribuição ---
+configure_platform_security() {
+    if [[ "$FAMILY" == rhel ]]; then
+        if command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce)" != Disabled ]]; then
+            SELINUX_ACTIVE=true
+            warn "SELinux ativo — configurando portas..."
+            if command -v semanage >/dev/null 2>&1; then
+                semanage port -a -t http_port_t -p tcp 8000 2>/dev/null || \
+                    semanage port -m -t http_port_t -p tcp 8000 2>/dev/null || \
+                    warn "SELinux: configure manualmente a porta 8000 se necessário."
+            else
+                warn "SELinux: semanage indisponível; configure manualmente a porta 8000 se necessário."
+            fi
+            setsebool -P httpd_can_network_connect 1 2>/dev/null || \
+                warn "SELinux: httpd_can_network_connect não configurado automaticamente."
+            chcon -R -t httpd_sys_content_t "$INSTALL_DIR" 2>/dev/null || \
+                warn "SELinux: contexto do diretório não configurado automaticamente."
+        fi
+    elif command -v aa-status >/dev/null 2>&1; then
+        warn "AppArmor detectado — monitorar mysqldump"
+        warn "Se mysqldump falhar, verifique os perfis AppArmor ativos."
+    fi
+}
+
+warn_firewall() {
+    if [[ "$FAMILY" == rhel ]] && systemctl is-active --quiet firewalld 2>/dev/null; then
+        warn "Firewall ativo — libere a porta 80 manualmente"
+        warn "Para liberar HTTP: firewall-cmd --permanent --add-service=http; firewall-cmd --reload"
+    elif [[ "$FAMILY" == debian ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+        warn "Firewall ativo — libere a porta 80 manualmente"
+        warn "Para liberar HTTP: ufw allow http"
+    fi
 }
 
 # --- Configurar systemd ---
@@ -448,6 +590,8 @@ print_summary() {
 # --- Fluxo principal ---
 main() {
     check_root
+    detect_distribution
+    [[ "$FAMILY" != debian ]] || apt_update
     detect_install_mode
     check_or_install_python
     check_or_install_mariadb
@@ -457,6 +601,7 @@ main() {
     check_or_install_mysqldump
     create_service_user
     create_install_dir
+    configure_platform_security
     setup_venv
     setup_env
     setup_local_env
@@ -465,6 +610,7 @@ main() {
     setup_nginx
     setup_systemd
     verify_install
+    warn_firewall
     print_summary
 }
 

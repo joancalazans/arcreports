@@ -28,9 +28,17 @@ ALLOWED_WRITE_TABLES = {
     "dashboard_sources",
     "dashboard_widgets",
     "system_config",
-    "trs_sla_contratos",
 }
-ALLOWED_WRITE_PREFIXES = ("relatorio_", "dashboard_", "memora_")
+ALLOWED_WRITE_PREFIXES = (
+    "relatorio_",
+    "dashboard_",
+    "memora_",
+    "sti_",
+    "zabbix_",
+    "redmine_",
+    "bookstack_",
+    "custom_",
+)
 BLOCKED_WRITE_TABLES = {"users", "auth_logs", "admin_action_logs"}
 BLOCKED_WRITE_PREFIXES = ("glpi_",)
 

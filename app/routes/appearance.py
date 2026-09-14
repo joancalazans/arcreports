@@ -65,8 +65,9 @@ ALLOWED_TIMEZONES = [
 APPEARANCE_DIR = Path("static/uploads/appearance")
 LOGIN_BG_PATH = APPEARANCE_DIR / "login_bg.jpg"
 LOGIN_BG_STATIC_PATH = "uploads/appearance/login_bg.jpg"
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
-MAX_IMAGE_SIZE = 2 * 1024 * 1024
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+LOGIN_BG_MAX_SIZE = 7 * 1024 * 1024
+PDF_LOGO_MAX_SIZE = 2 * 1024 * 1024
 settings = get_settings()
 
 
@@ -179,11 +180,38 @@ async def parse_appearance_form(request: Request) -> tuple[dict[str, str], dict[
 
 def image_data_url(filename: str, content: bytes) -> str | None:
     extension = Path(filename).suffix.lower()
-    if extension not in ALLOWED_EXTENSIONS:
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
         return None
     mime = "image/png" if extension == ".png" else "image/jpeg"
     encoded = base64.b64encode(content).decode("ascii")
     return f"data:{mime};base64,{encoded}"
+
+
+def validate_image_upload(
+    filename: str,
+    content: bytes,
+    max_size: int,
+    field_name: str,
+) -> str | None:
+    """
+    Valida extensão e tamanho do arquivo.
+    Retorna mensagem de erro ou None se válido.
+    """
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return (
+            f"Extensão não permitida: {ext}. "
+            f"Use: JPG, JPEG ou PNG."
+        )
+    if len(content) > max_size:
+        max_mb = max_size // (1024 * 1024)
+        size_mb = len(content) / (1024 * 1024)
+        return (
+            f"Arquivo muito grande: "
+            f"{size_mb:.1f}MB. "
+            f"Máximo permitido: {max_mb}MB."
+        )
+    return None
 
 
 def verify_appearance_csrf(request: Request, csrf_token: str) -> None:
@@ -224,12 +252,15 @@ async def update_appearance(request: Request, db: Session = Depends(get_db)):
     image_file = image.get("login_bg_image", {"filename": "", "content": b""})
 
     if image_file.get("filename"):
-        extension = Path(str(image_file["filename"])).suffix.lower()
-        if extension not in ALLOWED_EXTENSIONS:
-            return appearance_redirect("Formato inválido. Use JPG ou PNG.", True)
         content = bytes(image_file["content"])
-        if len(content) > MAX_IMAGE_SIZE:
-            return appearance_redirect("Imagem muito grande. Máximo 2MB.", True)
+        validation_error = validate_image_upload(
+            str(image_file["filename"]),
+            content,
+            LOGIN_BG_MAX_SIZE,
+            "Imagem de fundo",
+        )
+        if validation_error:
+            return appearance_redirect(validation_error, True)
         APPEARANCE_DIR.mkdir(parents=True, exist_ok=True)
         LOGIN_BG_PATH.write_bytes(content)
         image_path = LOGIN_BG_STATIC_PATH
@@ -301,11 +332,15 @@ async def update_pdf_appearance(request: Request, db: Session = Depends(get_db))
         pdf_logo = ""
     elif logo_file.get("filename"):
         content = bytes(logo_file["content"])
-        if len(content) > MAX_IMAGE_SIZE:
-            return appearance_redirect("Logo muito grande. Máximo 2MB.", True)
+        validation_error = validate_image_upload(
+            str(logo_file["filename"]),
+            content,
+            PDF_LOGO_MAX_SIZE,
+            "Logo da empresa",
+        )
+        if validation_error:
+            return appearance_redirect(validation_error, True)
         data_url = image_data_url(str(logo_file["filename"]), content)
-        if data_url is None:
-            return appearance_redirect("Formato inválido. Use JPG ou PNG.", True)
         pdf_logo = data_url
 
     pdf_values = {

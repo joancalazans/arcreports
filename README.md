@@ -108,6 +108,8 @@ sudo bash install.sh
 
 Consulte [.env.example](.env.example), [local.env.example](local.env.example) e [ldap.env.example](ldap.env.example). Os exemplos não contêm segredos reais. O instalador usa `reports` e contas locais em `localhost:3306`; instalações com nomes/host/porta diferentes exigem revisão manual e são preservadas. `glpi_reports` é um nome histórico, não o default atual.
 
+> **Upload de imagens:** o Nginx precisa de `client_max_body_size 10m` na configuração para permitir uploads de até 7MB. O arquivo `docs/nginx.example.conf` já inclui essa configuração.
+
 - `.env`: banco local, conta administrativa, gestão de contas, provisionamento opcional, chave, TTL, limite de linhas, console SQL e origem GLPI legada. Preferir conectores cadastrados na interface. `APP_SECRET_KEY` é apenas alias legado de fallback.
 - `local.env`: administrador inicial. O startup cria/promove/reativa essa conta; não substitui um hash de senha já existente.
 - `ldap.env`: bootstrap opcional com oito chaves LDAP. Após o cadastro, a configuração persistida no banco tem precedência nesse fluxo. Manter acesso local de contingência.
@@ -305,6 +307,8 @@ sudo bash install.sh
 ### Configuration
 
 See [.env.example](.env.example), [local.env.example](local.env.example) and [ldap.env.example](ldap.env.example). Examples contain no real secrets. The installer uses `reports` and local accounts at `localhost:3306`; installations with different names/host/port require manual review and are preserved. `glpi_reports` is a historical name, not the current default.
+
+> **Image uploads:** Nginx requires `client_max_body_size 10m` in its configuration to allow uploads up to 7MB. The file `docs/nginx.example.conf` already includes this setting.
 
 - `.env`: local database, administrative account, account management, optional provisioning, secret key, TTL, row limit, SQL console and legacy GLPI source. Prefer connectors configured through the UI. `APP_SECRET_KEY` is only a legacy fallback alias.
 - `local.env`: initial administrator. Startup creates/promotes/reactivates this account; it does not replace an existing password hash.

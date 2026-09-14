@@ -138,10 +138,13 @@
           <i class="ti ti-photo" style="font-size:22px;color:#378ADD" aria-hidden="true"></i>
           <span style="display:block">
             <strong style="display:block;font-size:13px;color:var(--color-text-primary)">Clique para enviar</strong>
-            <small style="color:var(--color-text-tertiary)">JPG, PNG — máx. 2MB</small>
+            <small style="color:var(--color-text-tertiary)">JPG, JPEG, PNG — máx. 7MB</small>
           </span>
         </label>
-        <input class="form-control" type="file" name="login_bg_image" id="login_bg_image" accept=".jpg,.jpeg,.png">
+        <input class="form-control" type="file" name="login_bg_image" id="login_bg_image" accept=".jpg,.jpeg,.png" onchange="validateImageUpload(this, 7, 'Imagem de fundo')">
+        <small class="text-muted d-block mt-1">
+          Formatos aceitos: JPG, JPEG, PNG · Máximo: 7MB · Recomendado: 1920×1080px ou maior
+        </small>
 
         <input type="hidden" name="login_overlay_color" id="login_overlay_color" value="{{ appearance.login_overlay_color or '#1e2a3a' }}">
         <div id="overlay-swatches" style="display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 12px">
@@ -192,7 +195,10 @@
           <small style="color:var(--color-text-tertiary)">PNG, JPG — máx. 2MB</small>
         </span>
       </label>
-      <input class="form-control" type="file" name="pdf_logo" id="pdf_logo" accept=".jpg,.jpeg,.png">
+      <input class="form-control" type="file" name="pdf_logo" id="pdf_logo" accept=".jpg,.jpeg,.png" onchange="validateImageUpload(this, 2, 'Logo da empresa')">
+      <small class="text-muted d-block mt-1">
+        Formatos aceitos: JPG, JPEG, PNG · Máximo: 2MB · Recomendado: mínimo 200×200px, fundo transparente (PNG)
+      </small>
     </div>
 
     <label class="form-label" for="pdf_titulo">Título do relatório PDF</label>
@@ -242,6 +248,37 @@
 
 <script>
   const currentImage = "{{ appearance.login_bg_image or '' }}";
+
+  function validateImageUpload(input, maxMB, fieldLabel) {
+    const file = input.files[0];
+    if (!file) return true;
+
+    const allowed = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png"
+    ];
+    if (!allowed.includes(file.type)) {
+      alert(
+        fieldLabel + ": extensão não permitida.\n" +
+        "Use: JPG, JPEG ou PNG."
+      );
+      input.value = "";
+      return false;
+    }
+
+    const maxBytes = maxMB * 1024 * 1024;
+    if (file.size > maxBytes) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      alert(
+        fieldLabel + ": arquivo muito grande (" + sizeMB + "MB).\n" +
+        "Máximo permitido: " + maxMB + "MB."
+      );
+      input.value = "";
+      return false;
+    }
+    return true;
+  }
 
   function selected(name) {
     return document.querySelector(`[name="${name}"]`);

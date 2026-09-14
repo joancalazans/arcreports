@@ -11,7 +11,7 @@ umask 077
 INSTALL_DIR="/opt/sites/arcreports"
 SERVICE_USER="ia-dev"
 DB_NAME="reports"
-DB_APP_USER="glpi_portal"
+DB_APP_USER="arcreports"
 DB_ADMIN_USER="portal_db_admin"
 DB_USER_ADMIN="portal_db_user"
 INSTALL_MODE=""

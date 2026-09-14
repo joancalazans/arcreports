@@ -141,9 +141,11 @@ Código em `app/`, interface em `templates/` e `static/`, auxiliares em `etl/`, 
 
 | Conta (`@localhost`) | Função | Grants do instalador |
 |---|---|---|
-| `glpi_portal` | Aplicação, resultados e schema local | `SELECT,INSERT,UPDATE,DELETE,CREATE,DROP,INDEX,ALTER ON reports.*` |
+| `arcreports` | Aplicação, resultados e schema local | `SELECT,INSERT,UPDATE,DELETE,CREATE,DROP,INDEX,ALTER ON reports.*` |
 | `portal_db_admin` | Criar databases e conceder privilégios das réplicas | `ALL PRIVILEGES ON *.* WITH GRANT OPTION` |
 | `portal_db_user` | Gestão de contas de leitura | `CREATE USER ON *.*` + `SELECT ON reports.* WITH GRANT OPTION` |
+
+> **Nota:** em instalações anteriores à v0.1.0, o usuário de aplicação pode ser chamado `glpi_portal`. Novas instalações usam `arcreports`.
 
 São três contas MariaDB, distintas do usuário Linux `ia-dev` e do administrador do portal. O DBA de bootstrap é um pré-requisito de instalação. Grants são aditivos, sem revogar permissões antigas; acesso às réplicas depende do provisionamento dos conectores. Em origens GLPI e demais fontes, use contas separadas **somente SELECT**.
 
@@ -341,9 +343,11 @@ Code lives in `app/`, UI in `templates/` and `static/`, helpers in `etl/`, migra
 
 | Account (`@localhost`) | Role | Installer grants |
 |---|---|---|
-| `glpi_portal` | Application, results and local schema | `SELECT,INSERT,UPDATE,DELETE,CREATE,DROP,INDEX,ALTER ON reports.*` |
+| `arcreports` | Application, results and local schema | `SELECT,INSERT,UPDATE,DELETE,CREATE,DROP,INDEX,ALTER ON reports.*` |
 | `portal_db_admin` | Create databases and grant replica privileges | `ALL PRIVILEGES ON *.* WITH GRANT OPTION` |
 | `portal_db_user` | Manage read-only accounts | `CREATE USER ON *.*` + `SELECT ON reports.* WITH GRANT OPTION` |
+
+> **Note:** installations prior to v0.1.0 may use `glpi_portal` as the application user name. New installations use `arcreports`.
 
 These are three MariaDB accounts, distinct from Linux user `ia-dev` and the portal administrator. A bootstrap DBA is an installation prerequisite. Grants are additive, without revoking existing permissions; replica access depends on connector provisioning. Use separate **SELECT-only** accounts on GLPI and all other sources.
 

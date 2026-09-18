@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block head %}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/tom-select/tom-select.bootstrap5.min.css') }}">
 <style>
   .home-dashboard-report-card {
     transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
@@ -15,6 +16,14 @@
   }
   .home-card-header {
     cursor: pointer;
+  }
+  #reportDetailModal .modal-dialog {
+    max-width: 1100px;
+    width: 90vw;
+  }
+  .dynamic-filter-select {
+    min-height: 38px;
+    max-height: 150px;
   }
 </style>
 {% endblock %}
@@ -188,6 +197,19 @@
             <span>Data fim</span>
             <input class="form-control" id="reportDetailDateTo" name="date_to" type="date">
           </label>
+          <div id="dynamicFilters" class="mt-3" style="display:none;width:100%">
+            <hr class="my-3">
+            <div class="fw-semibold small text-muted mb-2">Filtros adicionais</div>
+            <div id="dynamicFiltersLoading" class="text-muted small">Carregando filtros...</div>
+            <div id="primaryFilters" class="row g-2"></div>
+            <div class="text-center mt-2 mb-1">
+              <button id="btnMoreFilters" class="btn btn-link btn-sm text-decoration-none" type="button" style="display:none">
+                <i class="ti ti-chevron-down" aria-hidden="true"></i>
+                <span>Mais filtros</span>
+              </button>
+            </div>
+            <div id="secondaryFilters" class="row g-2 mt-2" style="display:none"></div>
+          </div>
           <button class="btn btn-primary" id="reportDetailApplyFilter" type="submit">Aplicar filtro</button>
           <button class="btn d-none" id="reportDetailClearFilter" type="button" style="background-color:#FAEEDA;border-color:#E8C66A;color:#6B4F00">Limpar filtro</button>
           <a class="btn btn-outline-success" id="reportDetailExport" href="#">Exportar Excel</a>
@@ -223,6 +245,7 @@
 </div>
 
 <script src="{{ url_for('static', path='vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/tom-select/tom-select.complete.min.js') }}"></script>
 <script>
   function toggleHomeGroup(index) {
     var content = document.getElementById("home-content-" + index);
@@ -341,6 +364,8 @@
     sortCol: null,
     sortDir: null,
     dateColumns: [],
+    dynamicColumns: [],
+    dynamicFilterCount: 0,
     search: "",
     searchTimer: null,
   };
@@ -353,6 +378,50 @@
   const reportDetailApplyFilter = document.getElementById("reportDetailApplyFilter");
   const reportDetailClearFilter = document.getElementById("reportDetailClearFilter");
   const reportDetailExport = document.getElementById("reportDetailExport");
+  reportDetailExport.addEventListener("click", function(e) {
+    if (this.href === "#" || this.classList.contains("disabled")) return;
+
+    const btn = this;
+    const originalHTML = btn.innerHTML;
+    let seconds = 0;
+
+    // Mostrar spinner com contador
+    btn.classList.add("disabled");
+    const updateLabel = () => {
+      btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Exportando... (${seconds}s)`;
+    };
+    updateLabel();
+
+    // Contador de segundos
+    const counter = setInterval(() => {
+      seconds++;
+      updateLabel();
+    }, 1000);
+
+    // Detectar quando o browser retorna o foco após o download
+    const onFocus = () => {
+      // Aguardar 1s para garantir que o download realmente iniciou
+      setTimeout(() => {
+        clearInterval(counter);
+        window.removeEventListener('focus', onFocus);
+        btn.innerHTML = originalHTML;
+        btn.classList.remove("disabled");
+      }, 1000);
+    };
+
+    // Registrar listener de foco com pequeno delay para não capturar o click atual
+    setTimeout(() => {
+      window.addEventListener('focus', onFocus);
+    }, 500);
+
+    // Fallback: restaurar após 120s se o foco não retornar
+    setTimeout(() => {
+      clearInterval(counter);
+      window.removeEventListener('focus', onFocus);
+      btn.innerHTML = originalHTML;
+      btn.classList.remove("disabled");
+    }, 120000);
+  });
   const reportDetailSearch = document.getElementById("reportDetailSearch");
   const reportDetailSearchSpinner = document.getElementById("reportDetailSearchSpinner");
   const reportDetailSearchClear = document.getElementById("reportDetailSearchClear");
@@ -363,6 +432,11 @@
   const reportDetailRows = document.getElementById("reportDetailRows");
   const reportDetailPrevious = document.getElementById("reportDetailPrevious");
   const reportDetailNext = document.getElementById("reportDetailNext");
+  const dynamicFilters = document.getElementById("dynamicFilters");
+  const dynamicFiltersLoading = document.getElementById("dynamicFiltersLoading");
+  const primaryFilters = document.getElementById("primaryFilters");
+  const secondaryFilters = document.getElementById("secondaryFilters");
+  const btnMoreFilters = document.getElementById("btnMoreFilters");
 
   const formatDateInput = (value) => {
     const year = value.getFullYear();
@@ -408,6 +482,153 @@
     reportDetailWarning.classList.toggle("d-none", !message);
   };
 
+  const syncReportFilterAvailability = () => {
+    const available = reportDetailState.dateColumns.length > 0 || reportDetailState.dynamicColumns.length > 0;
+    reportDetailApplyFilter.classList.toggle("d-none", !available);
+  };
+
+  const dynamicFilterControl = (column) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "col-md-4";
+    const label = document.createElement("label");
+    label.className = "form-label small fw-semibold";
+    label.textContent = column.name;
+    wrapper.append(label);
+    if (column.type === "list") {
+      const select = document.createElement("select");
+      select.multiple = true;
+      select.className = "form-select form-select-sm dynamic-filter-select";
+      select.dataset.column = column.name;
+      (column.values || []).forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.append(option);
+      });
+      wrapper.append(select);
+    } else {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "form-control form-control-sm dynamic-filter-like";
+      input.dataset.column = column.name;
+      input.placeholder = "Buscar...";
+      wrapper.append(input);
+    }
+    return wrapper;
+  };
+
+  const destroyDynamicFilterSelects = () => {
+    document.querySelectorAll(".dynamic-filter-select").forEach((select) => {
+      if (select.tomselect) select.tomselect.destroy();
+    });
+  };
+
+  const renderDynamicFilters = (columns) => {
+    reportDetailState.dynamicColumns = Array.isArray(columns) ? columns : [];
+    destroyDynamicFilterSelects();
+    primaryFilters.replaceChildren();
+    secondaryFilters.replaceChildren();
+    dynamicFiltersLoading.classList.add("d-none");
+    if (!reportDetailState.dynamicColumns.length) {
+      dynamicFilters.style.display = "none";
+      syncReportFilterAvailability();
+      return;
+    }
+    dynamicFilters.style.display = "block";
+    reportDetailState.dynamicColumns.forEach((column, index) => {
+      (index < 6 ? primaryFilters : secondaryFilters).append(dynamicFilterControl(column));
+    });
+    document.querySelectorAll(".dynamic-filter-select").forEach((select) => {
+      new TomSelect(select, {
+        plugins: ["checkbox_options", "clear_button"],
+        placeholder: "Selecione...",
+        allowEmptyOption: false,
+        closeAfterSelect: false,
+        hideSelected: false,
+        maxOptions: 300,
+      });
+    });
+    const hasMore = reportDetailState.dynamicColumns.length > 6;
+    btnMoreFilters.style.display = hasMore ? "inline-block" : "none";
+    btnMoreFilters.querySelector("i").className = "ti ti-chevron-down";
+    btnMoreFilters.querySelector("span").textContent = "Mais filtros";
+    secondaryFilters.style.display = "none";
+    syncReportFilterAvailability();
+  };
+
+  const loadDynamicFilters = (reportId) => {
+    reportDetailState.dynamicColumns = [];
+    primaryFilters.replaceChildren();
+    secondaryFilters.replaceChildren();
+    btnMoreFilters.style.display = "none";
+    dynamicFilters.style.display = "block";
+    dynamicFiltersLoading.classList.remove("d-none");
+    fetch(`/dashboard/report-detail/${reportId}/filter-columns`, { credentials: "same-origin" })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Falha ao carregar filtros.");
+        return payload;
+      })
+      .then((payload) => {
+        if (String(reportDetailState.reportId) !== String(reportId)) return;
+        renderDynamicFilters(payload.columns || []);
+      })
+      .catch(() => {
+        if (String(reportDetailState.reportId) !== String(reportId)) return;
+        renderDynamicFilters([]);
+      });
+  };
+
+  const collectDynamicFilters = () => {
+    const filters = {};
+    document.querySelectorAll(".dynamic-filter-select").forEach((select) => {
+      try {
+        const ts = select.tomselect;
+        if (!ts) return;
+        const values = ts.getValue();
+        const selectedValues = Array.isArray(values)
+          ? values
+          : (values ? [values] : []);
+        if (selectedValues.length > 0)
+          filters[select.dataset.column] = selectedValues;
+      } catch (e) {
+        console.warn(
+          'Erro ao coletar filtro:',
+          select.dataset.column, e
+        );
+      }
+    });
+    document.querySelectorAll(".dynamic-filter-like").forEach((input) => {
+      const value = input.value.trim();
+      if (value) filters[input.dataset.column] = value;
+    });
+    return filters;
+  };
+
+  const resetDynamicFilters = () => {
+    // Limpar Tom Select
+    document.querySelectorAll(".dynamic-filter-select").forEach((select) => {
+      try {
+        if (select.tomselect) {
+          select.tomselect.clear(true);
+        }
+      } catch (e) {
+        console.warn('Erro ao limpar Tom Select:', e);
+      }
+    });
+    // Limpar inputs LIKE
+    document.querySelectorAll(".dynamic-filter-like").forEach((input) => { input.value = ""; });
+    reportDetailState.dynamicFilterCount = 0;
+    reportDetailState.tempTable = null;
+  };
+
+  btnMoreFilters.addEventListener("click", () => {
+    const opening = secondaryFilters.style.display === "none";
+    secondaryFilters.style.display = opening ? "flex" : "none";
+    btnMoreFilters.querySelector("i").className = opening ? "ti ti-chevron-up" : "ti ti-chevron-down";
+    btnMoreFilters.querySelector("span").textContent = opening ? "Menos filtros" : "Mais filtros";
+  });
+
   const renderReportDateColumns = (dateColumns) => {
     reportDetailState.dateColumns = Array.isArray(dateColumns) ? dateColumns : [];
     reportDetailDateColumn.replaceChildren();
@@ -415,7 +636,6 @@
     reportDetailDateColumnWrap.classList.toggle("d-none", reportDetailState.dateColumns.length <= 1);
     reportDetailDateFromWrap.classList.toggle("d-none", !hasDateFilter);
     reportDetailDateToWrap.classList.toggle("d-none", !hasDateFilter);
-    reportDetailApplyFilter.classList.toggle("d-none", !hasDateFilter);
     reportDetailDateFrom.disabled = !hasDateFilter;
     reportDetailDateTo.disabled = !hasDateFilter;
     reportDetailDateColumn.disabled = !hasDateFilter;
@@ -425,6 +645,7 @@
       option.textContent = column.label || column.name;
       reportDetailDateColumn.append(option);
     });
+    syncReportFilterAvailability();
   };
 
   const nextReportSort = (column) => {
@@ -532,9 +753,15 @@
       }
     }
     const dateFilterUnavailable = !detail.is_temporary && reportDetailState.dateColumns.length === 0;
-    const warning = dateFilterUnavailable
+    let warning = dateFilterUnavailable && reportDetailState.dynamicColumns.length === 0
       ? "Filtro de período não disponível para este relatório."
       : detail.warning;
+    if (detail.is_temporary && reportDetailState.dynamicFilterCount > 0) {
+      const suffix = reportDetailState.dynamicFilterCount === 1
+        ? "filtro adicional ativo"
+        : "filtros adicionais ativos";
+      warning = `Resultado filtrado · ${reportDetailState.dynamicFilterCount} ${suffix}`;
+    }
     document.getElementById("reportDetailPageLabel").textContent =
       `Pagina ${detail.page} de ${detail.total_pages} | ${detail.page_size} por pagina`;
     reportDetailState.page = detail.page;
@@ -600,6 +827,8 @@
     reportDetailState.sortCol = null;
     reportDetailState.sortDir = null;
     reportDetailState.dateColumns = [];
+    reportDetailState.dynamicColumns = [];
+    reportDetailState.dynamicFilterCount = 0;
     reportDetailState.search = "";
     reportDetailSearch.value = "";
     reportDetailSearchClear.classList.add("d-none");
@@ -608,13 +837,15 @@
     resetReportDetailDates();
     reportDetailModal.show();
     loadReportDetail();
+    loadDynamicFilters(reportDetailState.reportId);
   });
 
   document.getElementById("reportDetailFilters").addEventListener("submit", (event) => {
     event.preventDefault();
     if (!reportDetailState.reportId) return;
-    if (reportDetailState.dateColumns.length === 0) {
-      setReportDetailWarning("Filtro de período não disponível para este relatório.");
+    const selectedDynamicFilters = collectDynamicFilters();
+    if (reportDetailState.dateColumns.length === 0 && Object.keys(selectedDynamicFilters).length === 0) {
+      setReportDetailWarning("Selecione ao menos um filtro adicional.");
       return;
     }
     reportDetailLoading.classList.remove("d-none");
@@ -627,6 +858,8 @@
     })}`, {
       credentials: "same-origin",
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dynamic_filters: selectedDynamicFilters }),
     })
       .then(async (response) => {
         const payload = await response.json();
@@ -643,6 +876,7 @@
           return;
         }
         reportDetailState.tempTable = payload.temp_table;
+        reportDetailState.dynamicFilterCount = payload.dynamic_filter_count || 0;
         syncReportClearFilterVisibility();
         reportDetailState.page = 1;
         renderReportCount({ count_meta: payload.count_meta, total_count: payload.row_count, is_temporary: true });
@@ -667,6 +901,7 @@
     reportDetailSearchClear.classList.add("d-none");
     reportDetailSearchSpinner.classList.add("d-none");
     resetReportDetailDates();
+    resetDynamicFilters();
     setReportDetailWarning("");
     syncReportClearFilterVisibility();
     loadReportDetail();
@@ -708,6 +943,7 @@
   });
 
   reportDetailModalElement.addEventListener("hidden.bs.modal", () => {
+    destroyDynamicFilterSelects();
     reportDetailState.reportId = null;
     reportDetailState.page = 1;
     reportDetailState.totalPages = 1;

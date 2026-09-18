@@ -151,7 +151,7 @@
       </select>
     </label>
     <button type="submit" class="audit-button audit-button-primary">Filtrar</button>
-    <a href="/admin/audit-log/export?{{ current_query_string }}" class="audit-button audit-button-ghost" style="text-decoration:none">
+    <a href="/admin/audit-log/export?{{ current_query_string }}" id="btnExportCSV" class="audit-button audit-button-ghost" style="text-decoration:none">
       <i class="ti ti-download"></i>&nbsp; Exportar CSV
     </a>
     <a href="{{ clear_filters_url }}" class="audit-button audit-button-ghost">Limpar</a>
@@ -239,4 +239,47 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const btn = document.getElementById('btnExportCSV');
+  if (!btn) return;
+
+  btn.addEventListener('click', function(e) {
+    const originalHTML = btn.innerHTML;
+    btn.style.pointerEvents = 'none';
+    btn.style.opacity = '0.7';
+    btn.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Exportando...';
+
+    let seconds = 0;
+    const counter = setInterval(() => {
+      seconds++;
+      btn.innerHTML =
+        `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Exportando... (${seconds}s)`;
+    }, 1000);
+
+    const restore = () => {
+      clearInterval(counter);
+      window.removeEventListener('focus', onFocus);
+      btn.innerHTML = originalHTML;
+      btn.style.pointerEvents = '';
+      btn.style.opacity = '';
+    };
+
+    const onFocus = () => {
+      setTimeout(restore, 1000);
+    };
+
+    setTimeout(() => {
+      window.addEventListener('focus', onFocus);
+    }, 500);
+
+    // Fallback 120s
+    setTimeout(restore, 120000);
+  });
+})();
+</script>
 {% endblock %}

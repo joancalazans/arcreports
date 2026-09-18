@@ -329,6 +329,70 @@ def available_columns_for_table(db: Session, source_table: str) -> set[str]:
     return {row[0] for row in rows}
 
 
+def _dynamic_filter_parts(
+    filters: dict[str, list[str] | str],
+    allowed_columns: set[str],
+) -> tuple[list[str], dict[str, object]]:
+    """Monta clausulas e parametros sem interpolar valores fornecidos pelo usuario."""
+    clauses: list[str] = []
+    params: dict[str, object] = {}
+    for filter_index, (column_name, raw_value) in enumerate(filters.items()):
+        if column_name not in allowed_columns:
+            raise ValueError(f"Coluna de filtro invalida: {column_name}")
+        safe_column = f"dynamic_filter.{quote_column(column_name)}"
+        if isinstance(raw_value, list):
+            values = [str(value) for value in raw_value]
+            if not values:
+                continue
+            placeholders = []
+            for value_index, value in enumerate(values):
+                parameter = f"dynamic_{filter_index}_{value_index}"
+                placeholders.append(f":{parameter}")
+                params[parameter] = value
+            clauses.append(f"{safe_column} IN ({', '.join(placeholders)})")
+            continue
+        if isinstance(raw_value, str):
+            value = raw_value.strip()
+            if not value:
+                continue
+            parameter = f"dynamic_{filter_index}"
+            clauses.append(f"{safe_column} LIKE :{parameter}")
+            params[parameter] = f"%{value}%"
+            continue
+        raise ValueError(f"Valor de filtro invalido para a coluna: {column_name}")
+    return clauses, params
+
+
+def apply_dynamic_filters(
+    sql: str,
+    filters: dict[str, list[str] | str],
+    table_name: str,
+    db: Session,
+) -> str:
+    """
+    Injeta filtros dinamicos parametrizados no SQL.
+
+    Os nomes de coluna sao validados contra a tabela destino. Os valores ficam em
+    parametros nomeados, retornados por ``dynamic_filter_params`` para execucao.
+    """
+    allowed_columns = available_columns_for_table(db, table_name)
+    clauses, _ = _dynamic_filter_parts(filters, allowed_columns)
+    if not clauses:
+        return sql
+    return f"SELECT * FROM ({sql}) AS dynamic_filter WHERE {' AND '.join(clauses)}"
+
+
+def dynamic_filter_params(
+    filters: dict[str, list[str] | str],
+    table_name: str,
+    db: Session,
+) -> dict[str, object]:
+    """Retorna os parametros correspondentes a ``apply_dynamic_filters``."""
+    allowed_columns = available_columns_for_table(db, table_name)
+    _, params = _dynamic_filter_parts(filters, allowed_columns)
+    return params
+
+
 def detect_derived_join_key(result_columns: Iterable[str], source_columns: Iterable[str]) -> str | None:
     result_column_set = set(result_columns)
     source_column_set = set(source_columns)

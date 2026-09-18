@@ -587,9 +587,10 @@
       if (!widgetsContainer || !columns.length || !window.html2canvas || !window.jspdf) {
         return;
       }
-      const originalText = button.textContent;
+      const originalText = button.innerHTML;
       button.disabled = true;
-      button.textContent = "Gerando PDF...";
+      button.innerHTML =
+        '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Gerando PDF...';
       animatedEls.forEach(function(el) {
         el.style.animation = "none";
         el.style.opacity = "1";
@@ -647,8 +648,8 @@
           el.style.opacity = "";
           el.style.transform = "";
         });
+        button.innerHTML = originalText;
         button.disabled = false;
-        button.textContent = originalText;
       }
     });
   })();

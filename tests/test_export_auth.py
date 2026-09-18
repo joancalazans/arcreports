@@ -151,7 +151,7 @@ def test_other_report_routes_deny_category(db_session, view_user, report, monkey
 
 
 @pytest.mark.parametrize("endpoint", ["dashboard_report_preview", "search_dashboard_report_detail",
-    "dashboard_report_detail", "filter_dashboard_report_detail", "export_dashboard_report_detail",
+    "dashboard_report_detail", "dashboard_report_filter_columns", "filter_dashboard_report_detail", "export_dashboard_report_detail",
     "run_dashboard_report"])
 def test_dashboard_report_routes_deny_category(db_session, view_user, report, endpoint):
     view_user.portal_relatorios = True

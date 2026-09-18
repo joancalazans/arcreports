@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import date, datetime, time as datetime_time, timedelta
 from io import BytesIO
 from threading import Lock
+from typing import Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request, status
@@ -23,8 +24,10 @@ from app.models import AdminActionLog, Dashboard, DashboardSource, DashboardWidg
 from app.reporting import (
     CONTROL_COLUMN_ALIASES,
     IDENTIFIER_RE,
+    apply_dynamic_filters,
     apply_query_timeout,
     cleanup_expired_temp_report_tables,
+    dynamic_filter_params,
     is_temp_report_table,
     quote_column,
     quote_identifier,
@@ -57,6 +60,31 @@ REPORT_DETAIL_DATE_COLUMNS = ("solved_at", "created_at", "reference_date", "clos
 REPORT_DETAIL_PAGE_SIZE = 100
 REPORT_DETAIL_MAX_PAGE_SIZE = 500
 REPORT_TEMP_TTL = timedelta(hours=2)
+FILTER_DISTINCT_LIMIT = 200
+TECHNICAL_COLUMNS = {
+    "__saved_at", "type_id", "status_id", "priority_id", "urgency_id", "impact_id",
+    "sla_id", "author_id", "assigned_to_id", "eventid", "triggerid", "r_eventid",
+    "itemid", "hostid", "parent_id", "issue_id", "prazo_sla_segundos",
+    "tempo_util_segundos", "fator_sla", "status_codigo", "trigger_status",
+    "trigger_value", "tempo_primeiro_atendimento_segundos",
+    "prazo_sla_segundos_formatado",
+}
+TEMPORAL_COLUMNS = {
+    "created_at", "solved_at", "closed_at", "updated_at", "start_date", "due_date",
+    "reference_date", "target_end_at", "CreatedDate", "CompletedDate", "CloseDate",
+    "StartDate", "TargetEndDate", "DataDeAbertura", "DataDeFechamento",
+    "DataPrimeiraReabertura", "DataUltimaReabertura", "DatadePausa", "DatadeResumo",
+    "DatadeCancelamento", "DataPrimeiraAtribuicao", "ChegadanaFiladaMemora",
+    "PrimeiraAtribuicaoAposFilaMemora", "problema_clock", "resolucao_clock", "inicio",
+    "fim", "Alterado em", "Início", "Data prevista",
+}
+LIKE_COLUMNS = {
+    "Titulo", "titulo", "Título", "assunto_tarefa_pai", "Assunto da tarefa pai",
+    "LocalCategoria", "Categoria", "categoria", "NomeServico", "Comentarios", "descricao",
+    "problema_nome", "trigger_nome", "ItensAfetados", "hosts", "Email",
+    "PrimeiraAtribuicaoAposFilaMemora", "PrimeiroUsuarioAtribuidoAposFila",
+    "ChegadanaFiladaMemora",
+}
 PERIOD_FILTER_FIELD_RE = re.compile(
     r"^[^\x00`'\"\\.]+(?:\.[^\x00`'\"\\.]+)?$"
 )
@@ -1606,12 +1634,29 @@ def period_filter_sql(
 def create_temp_report_table(
     report: Report,
     user_id: int,
-    date_from: date,
-    date_to: date,
-    plan: TemporalPlan,
+    date_from: date | None,
+    date_to: date | None,
+    plan: TemporalPlan | None,
     db: Session,
+    dynamic_filters: dict[str, list[str] | str] | None = None,
 ) -> tuple[str, int]:
-    filtered_sql, _ = period_filter_sql(report, plan)
+    dynamic_filters = dynamic_filters or {}
+    params: dict[str, object] = {}
+    if plan:
+        if date_from is None or date_to is None:
+            raise ValueError("Periodo obrigatorio para o filtro temporal.")
+        filtered_sql, _ = period_filter_sql(report, plan)
+        params.update(date_period_params(date_from, date_to))
+    else:
+        filtered_sql = validate_select(report.sql_query, get_allowed_databases(db))
+    if dynamic_filters:
+        filtered_sql = apply_dynamic_filters(
+            filtered_sql,
+            dynamic_filters,
+            report.destination_table or "",
+            db,
+        )
+        params.update(dynamic_filter_params(dynamic_filters, report.destination_table or "", db))
     table_name = temp_report_name(report.id, user_id)
     safe_database = quote_identifier(settings.local_db_name)
     safe_table = quote_identifier(table_name)
@@ -1624,7 +1669,7 @@ def create_temp_report_table(
         created_at=created_at,
         expires_at=expires_at,
         row_count=0,
-        selected_column=plan.selected_column,
+        selected_column=plan.selected_column if plan else None,
         status="pending",
     )
     db.add(catalog_entry)
@@ -1634,7 +1679,7 @@ def create_temp_report_table(
     try:
         with local_engine.begin() as connection:
             apply_query_timeout(connection, report.filter_timeout_seconds)
-            result = connection.execute(text(filtered_sql), date_period_params(date_from, date_to))
+            result = connection.execute(text(filtered_sql), params)
             columns = list(result.keys())
             if not columns:
                 raise ValueError("Filtro retornou resultado sem colunas.")
@@ -2822,6 +2867,91 @@ def dashboard_report_preview(report_id: int, request: Request, db: Session = Dep
     )
 
 
+def is_dynamic_filter_column(column_name: str) -> bool:
+    return not (
+        column_name in TECHNICAL_COLUMNS
+        or column_name.endswith("_id")
+        or column_name.startswith("__")
+        or column_name in TEMPORAL_COLUMNS
+    )
+
+
+def dynamic_filter_column_payload(column_name: str, values: list[object]) -> dict:
+    if column_name in LIKE_COLUMNS or len(values) > FILTER_DISTINCT_LIMIT:
+        return {"name": column_name, "type": "like"}
+    return {
+        "name": column_name,
+        "type": "list",
+        "values": [str(value) for value in values],
+    }
+
+
+def destination_filter_columns(destination_table: str) -> list[dict]:
+    if not destination_table or not IDENTIFIER_RE.fullmatch(destination_table):
+        return []
+    safe_database = quote_identifier(settings.local_db_name)
+    safe_table = quote_identifier(destination_table)
+    with local_engine.connect() as connection:
+        columns = connection.execute(
+            text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = :database_name AND TABLE_NAME = :table_name "
+                "ORDER BY ORDINAL_POSITION"
+            ),
+            {"database_name": settings.local_db_name, "table_name": destination_table},
+        ).scalars().all()
+        apply_query_timeout(connection, 10)
+        payload = []
+        for column_name in columns:
+            if not is_dynamic_filter_column(column_name):
+                continue
+            if column_name in LIKE_COLUMNS:
+                payload.append({"name": column_name, "type": "like"})
+                continue
+            safe_column = quote_column(column_name)
+            try:
+                values = connection.execute(
+                    text(
+                        f"SELECT DISTINCT {safe_column} AS value "
+                        f"FROM {safe_database}.{safe_table} "
+                        f"WHERE {safe_column} IS NOT NULL "
+                        f"ORDER BY {safe_column} LIMIT {FILTER_DISTINCT_LIMIT + 1}"
+                    )
+                ).scalars().all()
+            except SQLAlchemyError:
+                logger.warning(
+                    "Falha ou timeout ao classificar filtro dinamico %s.%s; usando LIKE.",
+                    destination_table,
+                    column_name,
+                    exc_info=True,
+                )
+                payload.append({"name": column_name, "type": "like"})
+                continue
+            payload.append(dynamic_filter_column_payload(column_name, values))
+    return payload
+
+
+@router.get("/dashboard/report-detail/{report_id}/filter-columns")
+def dashboard_report_filter_columns(report_id: int, request: Request, db: Session = Depends(get_db)):
+    user = require_view_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    report = db.get(Report, report_id)
+    if not report or not report.show_on_dashboard:
+        return JSONResponse({"error": "Relatorio nao encontrado no dashboard."}, status_code=404)
+    if not can_access_report(user, report):
+        report_dashboard_access_denied(db, user, report, "denied_dashboard_filter_columns")
+        return JSONResponse({"error": "Acesso negado para a categoria deste relatorio."}, status_code=403)
+    try:
+        columns = destination_filter_columns(report.destination_table or "")
+    except SQLAlchemyError as exc:
+        return JSONResponse(
+            {"error": f"Nao foi possivel carregar as colunas filtraveis: {exc}"},
+            status_code=500,
+        )
+    return JSONResponse({"columns": columns})
+
+
 @router.get("/dashboard/report-detail/{report_id}/search")
 def search_dashboard_report_detail(report_id: int, request: Request, db: Session = Depends(get_db)):
     user = require_view_user(request, db)
@@ -2938,7 +3068,7 @@ def dashboard_report_detail(report_id: int, request: Request, db: Session = Depe
     started = time.perf_counter()
     filter_sql, params, warning = detail_empty_filter()
     if temp_table:
-        warning = "Resultado filtrado temporario gerado para o periodo selecionado."
+        warning = "Resultado filtrado"
     try:
         total_count = count_report_detail_rows(metadata, filter_sql, params)
         total_pages = max(1, (total_count + page_size - 1) // page_size)
@@ -2987,7 +3117,12 @@ def dashboard_report_detail(report_id: int, request: Request, db: Session = Depe
 
 
 @router.post("/dashboard/report-detail/{report_id}/filter", dependencies=[Depends(verify_csrf_header)])
-def filter_dashboard_report_detail(report_id: int, request: Request, db: Session = Depends(get_db)):
+def filter_dashboard_report_detail(
+    report_id: int,
+    request: Request,
+    payload: Optional[dict] = None,
+    db: Session = Depends(get_db),
+):
     user = require_view_user(request, db)
     if isinstance(user, RedirectResponse):
         return user
@@ -3002,19 +3137,39 @@ def filter_dashboard_report_detail(report_id: int, request: Request, db: Session
         report,
         campo_data=request.query_params.get("campo_data"),
     )
-    if not plan:
+    raw_dynamic_filters = (payload or {}).get("dynamic_filters", {})
+    if not isinstance(raw_dynamic_filters, dict):
+        return JSONResponse({"error": "Filtros dinamicos invalidos."}, status_code=400)
+    dynamic_filters: dict[str, list[str] | str] = {}
+    for column_name, value in raw_dynamic_filters.items():
+        if not isinstance(column_name, str):
+            return JSONResponse({"error": "Nome de coluna de filtro invalido."}, status_code=400)
+        if isinstance(value, str):
+            if value.strip():
+                dynamic_filters[column_name] = value.strip()
+        elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+            if value:
+                dynamic_filters[column_name] = value
+        else:
+            return JSONResponse(
+                {"error": f"Valor de filtro invalido para a coluna: {column_name}"},
+                status_code=400,
+            )
+    if not plan and not dynamic_filters:
         return JSONResponse(
             {
                 "no_filter_available": True,
-                "warning": "Filtro de período não disponível para este relatório.",
+                "warning": "Nenhum filtro disponível para este relatório.",
                 "count_meta": detail_count_payload(total_table_count(report.destination_table or ""), None),
             }
         )
     try:
-        date_from, date_to = parse_report_detail_dates(
-            request.query_params.get("date_from"),
-            request.query_params.get("date_to"),
-        )
+        date_from, date_to = (None, None)
+        if plan:
+            date_from, date_to = parse_report_detail_dates(
+                request.query_params.get("date_from"),
+                request.query_params.get("date_to"),
+            )
         started = time.perf_counter()
         table_name, row_count = create_temp_report_table(
             report,
@@ -3023,16 +3178,23 @@ def filter_dashboard_report_detail(report_id: int, request: Request, db: Session
             date_to,
             plan,
             db,
+            dynamic_filters=dynamic_filters,
         )
     except (ValueError, SQLAlchemyError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     log_report_detail_access(db, report, user.id, "modal_filter_execute", row_count, started)
+    active_count = len(dynamic_filters)
+    warning = "Resultado filtrado"
+    if active_count:
+        suffix = "filtro adicional ativo" if active_count == 1 else "filtros adicionais ativos"
+        warning = f"{warning} · {active_count} {suffix}"
     return JSONResponse(
         {
             "temp_table": table_name,
             "row_count": row_count,
             "count_meta": detail_count_payload(total_table_count(report.destination_table or ""), row_count),
-            "warning": "Resultado filtrado temporario gerado para o periodo selecionado.",
+            "warning": warning,
+            "dynamic_filter_count": active_count,
         }
     )
 

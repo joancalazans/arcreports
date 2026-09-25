@@ -32,8 +32,6 @@ ALLOWED_WRITE_TABLES = {
 ALLOWED_WRITE_PREFIXES = (
     "relatorio_",
     "dashboard_",
-    "memora_",
-    "sti_",
     "zabbix_",
     "redmine_",
     "bookstack_",

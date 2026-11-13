@@ -5,6 +5,7 @@ import threading
 from datetime import datetime
 from types import SimpleNamespace
 
+from app import main
 from app.models import AdminActionLog, ConnectorConfig, ConnectorRun, SystemConfig
 from app.routes import history, imports
 
@@ -217,3 +218,143 @@ def test_save_schedule_logs_before_after_and_preserves_persisted_values(db_sessi
     assert "FULL: horários 02:00 -> 03:00" in log.message
     assert "dias 0 -> 0,6" in log.message
     assert "ativo false -> true" in log.message
+
+
+class ScheduledDateTime:
+    fixed = datetime(2026, 11, 13, 10, 0, 0)
+
+    @classmethod
+    def now(cls, timezone=None):
+        return cls.fixed.replace(tzinfo=timezone) if timezone else cls.fixed
+
+    @classmethod
+    def utcnow(cls):
+        return cls.fixed
+
+
+def configure_scheduled_connectors(db_session, monkeypatch):
+    full_config = make_config(
+        name="Conector Alfa",
+        connector_type="connector_alpha",
+        suggested_frequency="",
+        full_schedule_horarios="10:00",
+        full_schedule_dias="5",
+    )
+    incremental_config = make_config(
+        name="Conector Beta",
+        connector_type="connector_beta",
+        suggested_frequency="10:00",
+        full_schedule_horarios=None,
+        full_schedule_dias=None,
+    )
+    db_session.add_all(
+        [
+            full_config,
+            incremental_config,
+            SystemConfig(key=main.GLPI_SCHEDULE_ACTIVE_KEY, value="true"),
+            SystemConfig(key=main.GLPI_SCHEDULE_DAYS_KEY, value="5"),
+            SystemConfig(key=main.GLPI_FULL_SCHEDULE_ACTIVE_KEY, value="true"),
+        ]
+    )
+    db_session.commit()
+    monkeypatch.setattr(main, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(main, "datetime", ScheduledDateTime)
+    monkeypatch.setattr(main.app.state, "glpi_import_lock", threading.Lock())
+    return full_config, incremental_config
+
+
+def successful_scheduled_run(db, mode, connector_type):
+    run = ConnectorRun(
+        connector_type=connector_type,
+        table_name=f"{connector_type}_table",
+        mode=mode,
+        status="success",
+        row_count=7,
+        started_at=ScheduledDateTime.utcnow(),
+        finished_at=ScheduledDateTime.utcnow(),
+    )
+    db.add(run)
+    db.commit()
+    return [run]
+
+
+def test_scheduled_dispatcher_logs_each_connector_with_own_mode_and_origin(db_session, monkeypatch):
+    configure_scheduled_connectors(db_session, monkeypatch)
+    calls = []
+
+    def fake_import(db, mode, connector_type):
+        calls.append((connector_type, mode))
+        return successful_scheduled_run(db, mode, connector_type)
+
+    monkeypatch.setattr(main, "run_connector_import", fake_import)
+
+    main.run_scheduled_glpi_import()
+
+    assert calls == [
+        ("connector_alpha", "full"),
+        ("connector_beta", "incremental"),
+    ]
+    logs = db_session.query(AdminActionLog).order_by(AdminActionLog.id).all()
+    assert [(log.action, log.table_name) for log in logs] == [
+        ("connector_run_start", "Conector Alfa"),
+        ("connector_run_finish", "Conector Alfa"),
+        ("connector_run_start", "Conector Beta"),
+        ("connector_run_finish", "Conector Beta"),
+    ]
+    assert "modo: full" in logs[0].message
+    assert "modo: full" in logs[1].message
+    assert "modo: incremental" in logs[2].message
+    assert "modo: incremental" in logs[3].message
+    assert all("origem: agendada" in log.message for log in logs)
+    assert {run.origin for run in db_session.query(ConnectorRun).all()} == {"scheduler"}
+
+
+def test_scheduled_connector_failure_does_not_suppress_other_audits(db_session, monkeypatch):
+    configure_scheduled_connectors(db_session, monkeypatch)
+    calls = []
+
+    def fake_import(db, mode, connector_type):
+        calls.append(connector_type)
+        if connector_type == "connector_alpha":
+            raise RuntimeError("source unavailable")
+        return successful_scheduled_run(db, mode, connector_type)
+
+    monkeypatch.setattr(main, "run_connector_import", fake_import)
+
+    main.run_scheduled_glpi_import()
+
+    assert calls == ["connector_alpha", "connector_beta"]
+    finish_logs = {
+        log.table_name: log
+        for log in db_session.query(AdminActionLog).filter_by(action="connector_run_finish").all()
+    }
+    assert set(finish_logs) == {"Conector Alfa", "Conector Beta"}
+    assert finish_logs["Conector Alfa"].status == "error"
+    assert "resultado: falha" in finish_logs["Conector Alfa"].message
+    assert finish_logs["Conector Beta"].status == "success"
+
+
+def test_scheduled_audit_exception_does_not_interrupt_connector_loop(db_session, monkeypatch, caplog):
+    configure_scheduled_connectors(db_session, monkeypatch)
+    calls = []
+    original_helper = imports.record_connector_import_admin_log
+
+    def fake_import(db, mode, connector_type):
+        calls.append(connector_type)
+        return successful_scheduled_run(db, mode, connector_type)
+
+    def flaky_audit(*args, connector_type=None, **kwargs):
+        if connector_type == "connector_alpha":
+            raise RuntimeError("audit unavailable")
+        return original_helper(*args, connector_type=connector_type, **kwargs)
+
+    monkeypatch.setattr(main, "run_connector_import", fake_import)
+    monkeypatch.setattr(imports, "record_connector_import_admin_log", flaky_audit)
+
+    main.run_scheduled_glpi_import()
+
+    assert calls == ["connector_alpha", "connector_beta"]
+    assert db_session.query(AdminActionLog).filter_by(action="connector_run_start").count() == 2
+    finish_logs = db_session.query(AdminActionLog).filter_by(action="connector_run_finish").all()
+    assert [log.table_name for log in finish_logs] == ["Conector Beta"]
+    assert "Auditoria de conclusao do conector connector_alpha falhou" in caplog.text

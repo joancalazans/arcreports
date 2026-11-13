@@ -274,6 +274,7 @@ def record_connector_import_admin_log(
     runs: list[ConnectorRun] | None = None,
     connector_name: str | None = None,
     origin: str = "manual",
+    failure: Exception | None = None,
 ) -> None:
     selected_runs = list(runs) if runs is not None else None
     if selected_runs is None:
@@ -289,7 +290,7 @@ def record_connector_import_admin_log(
     tables_error = sum(run.status not in {"success", "skipped"} for run in selected_runs)
     rows_imported = sum(int(run.row_count or 0) for run in selected_runs)
 
-    if tables_success == 0:
+    if failure is not None or tables_success == 0:
         status_value = "error"
     elif tables_error > 0 or tables_skipped > 0:
         status_value = "warning"
@@ -303,10 +304,13 @@ def record_connector_import_admin_log(
         connector_name = connector_display_name(config) if config else connector_type
     connector_label = connector_name or connector_type or "Todos os conectores"
     origin_label = "agendada" if origin in {"scheduler", "scheduled", "agendada"} else "manual"
+    result_label = "falha" if status_value == "error" else "alerta" if status_value == "warning" else "sucesso"
+    failure_detail = f"; erro da execução: {failure}" if failure is not None else ""
     message = truncate_admin_log_message(
         f"Conector: {connector_label}; tipo: {connector_type or '-'}; modo: {action_mode}; "
-        f"origem: {origin_label}; tabelas ok: {tables_success}; com erro: {tables_error}; "
-        f"puladas: {tables_skipped}; linhas importadas: {rows_imported}; duração: {duration}"
+        f"origem: {origin_label}; resultado: {result_label}; tabelas ok: {tables_success}; "
+        f"com erro: {tables_error}; puladas: {tables_skipped}; linhas importadas: {rows_imported}; "
+        f"duração: {duration}{failure_detail}"
     )
     db.add(
         AdminActionLog(

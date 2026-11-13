@@ -65,8 +65,47 @@ neutra já aceita pelo código.
 
 ## Commit 2 — dispatcher agendado
 
-A preencher no segundo commit.
+Arquivos alterados:
+
+- `app/main.py`
+- `app/routes/imports.py`
+- `tests/test_connector_audit.py`
+- `docs/implementacao_auditoria_por_conector_etapa1_2026-11-13.md`
+
+Implementado:
+
+- `connector_run_start` e `connector_run_finish` dentro do loop, um par por conector;
+- nome, modo e origem próprios preservados para cada conector no mesmo disparo;
+- falha de um conector registrada sem impedir a tentativa e a auditoria dos demais;
+- falhas da auditoria de início ou conclusão protegidas e enviadas ao log da
+  aplicação, sem interromper o loop;
+- marcação de origem dos `ConnectorRun` mantida em uma única chamada após o loop,
+  preservando o padrão anterior de sessão/commit da importação;
+- resultado explícito na mensagem de conclusão, mantendo o status normalizado da
+  coluna `status`.
+
+Validação antes do commit:
+
+- testes focados: 7 aprovados;
+- suíte completa: 367 aprovados, 4 avisos de depreciação preexistentes do FastAPI;
+- `compileall` será repetido após o commit, junto com a suíte completa.
 
 ## Conferência de Joan após reiniciar em janela segura
 
-A preencher ao concluir o segundo commit.
+1. Executar manualmente um conector e confirmar em **Logs de Auditoria** duas linhas
+   com seu nome: `Importação de conector: início` e conclusão/falha; conferir modo,
+   origem manual, totais de tabelas, linhas e duração.
+2. Após um horário com dois conectores, confirmar pares distintos por nome, com
+   origem agendada e o modo próprio de cada conector.
+3. Conferir que uma falha de conector aparece como falha e não elimina os registros
+   dos outros conectores do mesmo disparo.
+4. Conferir que registros históricos `glpi_import_full` e
+   `glpi_import_incremental` continuam visíveis como
+   `Importação de conector (legado)`, inclusive na exportação CSV e no filtro
+   `Sistema`.
+5. Salvar uma agenda sem mudar os valores e conferir a mensagem com nome e
+   antes/depois de incremental e FULL; os valores persistidos devem permanecer
+   idênticos.
+
+O serviço não foi reiniciado nesta implementação. Joan deve reiniciá-lo somente na
+janela segura planejada.

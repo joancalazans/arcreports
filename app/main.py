@@ -601,7 +601,13 @@ def run_scheduled_glpi_import() -> None:
                 and current_schedule_day(now_local) in schedule_days
             )
             if full_match or incremental_match:
-                scheduled_configs.append((config.connector_type, "full" if full_match else "incremental"))
+                scheduled_configs.append(
+                    (
+                        config.connector_type,
+                        config.name or config.connector_type,
+                        "full" if full_match else "incremental",
+                    )
+                )
         if not scheduled_configs:
             logger.info("Scheduler conectores: nenhum conector ativo com horario correspondente.")
             return
@@ -612,7 +618,6 @@ def run_scheduled_glpi_import() -> None:
     if not lock.acquire(blocking=False):
         return
     db = SessionLocal()
-    started_at = None
     try:
         cutoff = datetime.utcnow() - timedelta(hours=2)
         running = (
@@ -646,20 +651,95 @@ def run_scheduled_glpi_import() -> None:
                 "Scheduler GLPI: execucao travada id=%s corrigida automaticamente.",
                 stuck.id,
             )
-        started_at = datetime.utcnow()
-        mode = "incremental"
         all_runs = []
-        for connector_type, scheduled_mode in scheduled_configs:
-            mode = scheduled_mode
-            runs = run_connector_import(db, scheduled_mode, connector_type=connector_type)
-            all_runs.extend(runs)
+        for connector_type, connector_name, scheduled_mode in scheduled_configs:
+            connector_started_at = datetime.utcnow()
+            runs = None
+            import_failure = None
+            try:
+                db.add(
+                    AdminActionLog(
+                        username="scheduler",
+                        action="connector_run_start",
+                        status="success",
+                        message=(
+                            f"Conector: {connector_name}; tipo: {connector_type}; "
+                            f"modo: {scheduled_mode}; origem: agendada"
+                        ),
+                        table_name=connector_name,
+                    )
+                )
+                db.commit()
+            except Exception as audit_exc:
+                db.rollback()
+                logger.exception(
+                    "Auditoria de inicio do conector %s falhou: %s",
+                    connector_type,
+                    audit_exc,
+                )
+
+            try:
+                runs = run_connector_import(db, scheduled_mode, connector_type=connector_type)
+                all_runs.extend(runs)
+            except Exception as exc:
+                import_failure = exc
+                logger.exception("Importacao automatica do conector %s falhou: %s", connector_type, exc)
+                try:
+                    db.add(
+                        ConnectorRun(
+                            connector_type="scheduler",
+                            table_name="__scheduler__",
+                            mode=scheduled_mode,
+                            origin="scheduler",
+                            status="error",
+                            error_message=str(exc),
+                            started_at=datetime.utcnow(),
+                            finished_at=datetime.utcnow(),
+                        )
+                    )
+                    db.add(
+                        GlpiImportLog(
+                            level="error",
+                            message=f"Importacao automatica de {connector_type}: {exc}",
+                        )
+                    )
+                    db.commit()
+                except Exception as log_exc:
+                    db.rollback()
+                    logger.exception(
+                        "Falha ao persistir erro da importacao automatica de %s: %s",
+                        connector_type,
+                        log_exc,
+                    )
+            finally:
+                connector_finished_at = datetime.utcnow()
+                try:
+                    imports.record_connector_import_admin_log(
+                        db,
+                        scheduled_mode,
+                        "scheduler",
+                        connector_started_at,
+                        connector_finished_at,
+                        connector_type=connector_type,
+                        runs=runs,
+                        connector_name=connector_name,
+                        origin="scheduler",
+                        failure=import_failure,
+                    )
+                except Exception as audit_exc:
+                    db.rollback()
+                    logger.exception(
+                        "Auditoria de conclusao do conector %s falhou: %s",
+                        connector_type,
+                        audit_exc,
+                    )
         mark_import_runs_origin(db, all_runs, "scheduler")
     except Exception as exc:
         db.add(
             ConnectorRun(
                 connector_type="scheduler",
                 table_name="__scheduler__",
-                mode=mode if "mode" in locals() else "incremental",
+                mode="incremental",
                 origin="scheduler",
                 status="error",
                 error_message=str(exc),
@@ -670,14 +750,6 @@ def run_scheduled_glpi_import() -> None:
         db.add(GlpiImportLog(level="error", message=f"Importacao automatica: {exc}"))
         db.commit()
     finally:
-        if started_at is not None:
-            finished_at = datetime.utcnow()
-            try:
-                imports.record_connector_import_admin_log(db, mode if "mode" in locals() else "incremental", "scheduler", started_at, finished_at)
-            except Exception as exc:
-                db.rollback()
-                db.add(GlpiImportLog(level="error", message=f"Log administrativo da importacao automatica: {exc}"))
-                db.commit()
         db.close()
         lock.release()
 

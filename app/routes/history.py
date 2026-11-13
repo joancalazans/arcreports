@@ -66,6 +66,8 @@ ACTION_LABELS = {
     "db_user_delete": "Usuario DB excluido",
     "db_user_remove_orphan": "Registro orfao de usuario DB removido",
     "connector_table_remove": "Tabela removida da whitelist",
+    "glpi_import_full": "Importação de conector (legado)",
+    "glpi_import_incremental": "Importação de conector (legado)",
 }
 
 
@@ -131,7 +133,14 @@ def format_duration(duration_ms: int | None) -> str:
     return f"{minutes}m {remaining}s"
 
 
-def format_action(action: str) -> str:
+def format_action(action: str, connector_name: str | None = None, status_value: str | None = None) -> str:
+    if action == "connector_run_start":
+        label = "Importação de conector: início"
+        return f"{label} — {connector_name}" if connector_name else label
+    if action == "connector_run_finish":
+        suffix = "falha" if normalize_audit_status(status_value) == "error" else "concluída"
+        label = f"Importação de conector: {suffix}"
+        return f"{label} — {connector_name}" if connector_name else label
     if action in ACTION_LABELS:
         return ACTION_LABELS[action]
     return action.replace("_", " ").strip().capitalize()
@@ -142,7 +151,12 @@ def admin_category(action: str) -> str:
         return "Exclusão"
     if action in {"duplicate_report", "toggle_primary"}:
         return "Relatório"
-    if action == "appearance_update" or action.startswith("glpi_schedule_") or action.startswith("glpi_import_"):
+    if (
+        action == "appearance_update"
+        or action.startswith("glpi_schedule_")
+        or action.startswith("glpi_import_")
+        or action.startswith("connector_run_")
+    ):
         return "Sistema"
     if action in {"toggle_source", "enable_source"}:
         return "Tabela"
@@ -227,7 +241,7 @@ def build_audit_log_query(
                 "timestamp": item.created_at,
                 "categoria": admin_category(item.action),
                 "usuario": item.username or "-",
-                "acao": format_action(item.action),
+                "acao": format_action(item.action, item.table_name, item.status),
                 "detalhe": details,
                 "status": normalize_audit_status(item.status),
                 "duracao": "",

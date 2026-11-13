@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
@@ -49,6 +49,7 @@ GLPI_SCHEDULE_ACTIVE_KEY = "glpi_schedule_active"
 GLPI_SCHEDULE_DAYS_KEY = "glpi_schedule_dias"
 GLPI_FULL_SCHEDULE_ACTIVE_KEY = "glpi_full_schedule_active"
 DEFAULT_GLPI_SCHEDULE_DAYS = "0,1,2,3,4,5,6"
+ADMIN_LOG_MESSAGE_MAX_BYTES = 65535
 WEEK_DAYS = [
     (1, "Seg"),
     (2, "Ter"),
@@ -255,6 +256,13 @@ def format_import_duration(started_at: datetime, finished_at: datetime) -> str:
     return f"{total_seconds}s"
 
 
+def truncate_admin_log_message(message: str) -> str:
+    encoded = message.encode("utf-8")
+    if len(encoded) <= ADMIN_LOG_MESSAGE_MAX_BYTES:
+        return message
+    return encoded[:ADMIN_LOG_MESSAGE_MAX_BYTES].decode("utf-8", errors="ignore")
+
+
 def record_connector_import_admin_log(
     db: Session,
     mode: str,
@@ -263,47 +271,51 @@ def record_connector_import_admin_log(
     finished_at: datetime,
     user_id: int | None = None,
     connector_type: str | None = None,
+    runs: list[ConnectorRun] | None = None,
+    connector_name: str | None = None,
+    origin: str = "manual",
 ) -> None:
-    connector_filter = "AND connector_type = :connector_type" if connector_type else ""
-    params = {"inicio_execucao": started_at}
-    if connector_type:
-        params["connector_type"] = connector_type
-    counts = db.execute(
-        text(
-            "SELECT "
-            "COUNT(*) AS total, "
-            "SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS sucesso, "
-            "SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS erros "
-            "FROM connector_runs "
-            f"WHERE started_at >= :inicio_execucao {connector_filter}"
-        ),
-        params,
-    ).mappings().one()
-    tables_total = int(counts["total"] or 0)
-    tables_success = int(counts["sucesso"] or 0)
-    tables_error = int(counts["erros"] or 0)
+    selected_runs = list(runs) if runs is not None else None
+    if selected_runs is None:
+        query = db.query(ConnectorRun).filter(
+            ConnectorRun.started_at >= started_at.replace(microsecond=0) - timedelta(seconds=1)
+        )
+        if connector_type:
+            query = query.filter(ConnectorRun.connector_type == connector_type)
+        selected_runs = query.all()
 
-    if tables_error > 0:
-        details = f"{tables_success}/{tables_total} tabelas, {tables_error} erros"
-    else:
-        details = f"{tables_success}/{tables_total} tabelas sincronizadas"
+    tables_success = sum(run.status == "success" for run in selected_runs)
+    tables_skipped = sum(run.status == "skipped" for run in selected_runs)
+    tables_error = sum(run.status not in {"success", "skipped"} for run in selected_runs)
+    rows_imported = sum(int(run.row_count or 0) for run in selected_runs)
 
     if tables_success == 0:
         status_value = "error"
-    elif tables_error > 0:
+    elif tables_error > 0 or tables_skipped > 0:
         status_value = "warning"
     else:
         status_value = "success"
 
     duration = format_import_duration(started_at, finished_at)
     action_mode = "full" if mode == "full" else "incremental"
+    if not connector_name and connector_type:
+        config = db.query(ConnectorConfig).filter(ConnectorConfig.connector_type == connector_type).first()
+        connector_name = connector_display_name(config) if config else connector_type
+    connector_label = connector_name or connector_type or "Todos os conectores"
+    origin_label = "agendada" if origin in {"scheduler", "scheduled", "agendada"} else "manual"
+    message = truncate_admin_log_message(
+        f"Conector: {connector_label}; tipo: {connector_type or '-'}; modo: {action_mode}; "
+        f"origem: {origin_label}; tabelas ok: {tables_success}; com erro: {tables_error}; "
+        f"puladas: {tables_skipped}; linhas importadas: {rows_imported}; duração: {duration}"
+    )
     db.add(
         AdminActionLog(
             user_id=user_id,
             username=username,
-            action=f"glpi_import_{action_mode}",
+            action="connector_run_finish",
             status=status_value,
-            message=f"{details} em {duration}",
+            message=message,
+            table_name=connector_label,
         )
     )
     db.commit()
@@ -321,21 +333,31 @@ def run_connector_import_background(
 
     db = SessionLocal()
     started_at = datetime.utcnow()
+    runs: list[ConnectorRun] | None = None
     try:
-        execute_connector_import(db, mode, table_id, connector_type)
+        runs = execute_connector_import(db, mode, table_id, connector_type)
     except Exception as exc:
         db.add(GlpiImportLog(level="error", message=f"Importacao em segundo plano: {exc}"))
         db.commit()
     finally:
         finished_at = datetime.utcnow()
         try:
-            record_connector_import_admin_log(db, mode, username, started_at, finished_at, user_id, connector_type)
+            record_connector_import_admin_log(
+                db, mode, username, started_at, finished_at, user_id, connector_type,
+                runs=runs, origin="manual",
+            )
         except Exception as exc:
             db.rollback()
-            db.add(GlpiImportLog(level="error", message=f"Log administrativo da importacao: {exc}"))
-            db.commit()
-        db.close()
-        import_lock.release()
+            logger.exception("Log administrativo da importacao falhou: %s", exc)
+            try:
+                db.add(GlpiImportLog(level="error", message=f"Log administrativo da importacao: {exc}"))
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception("Falha ao persistir erro do log administrativo da importacao.")
+        finally:
+            db.close()
+            import_lock.release()
 
 
 def connector_display_name(config: ConnectorConfig) -> str:
@@ -901,6 +923,12 @@ async def save_glpi_import_schedule(request: Request, db: Session = Depends(get_
     config = db.get(ConnectorConfig, int(connector_id)) if connector_id.isdigit() else get_connection_config(db)
     if not config:
         return connector_redirect(None, error="Conector ativo nao encontrado.")
+    old_incremental_times = config.suggested_frequency or ""
+    old_incremental_days = get_system_config_value(db, GLPI_SCHEDULE_DAYS_KEY, DEFAULT_GLPI_SCHEDULE_DAYS)
+    old_incremental_active = get_system_config_value(db, GLPI_SCHEDULE_ACTIVE_KEY, "true")
+    old_full_times = config.full_schedule_horarios or ""
+    old_full_days = config.full_schedule_dias or ""
+    old_full_active = get_system_config_value(db, GLPI_FULL_SCHEDULE_ACTIVE_KEY, "true")
     config.suggested_frequency = (data.get("suggested_frequency", [""])[0] or "").strip()
     set_system_config_value(
         db,
@@ -916,13 +944,25 @@ async def save_glpi_import_schedule(request: Request, db: Session = Depends(get_
     set_system_config_value(db, GLPI_FULL_SCHEDULE_ACTIVE_KEY, "true" if full_schedule_active else "false")
     config.full_schedule_horarios = (data.get("full_schedule_horarios", [""])[0] or "").strip() or None
     config.full_schedule_dias = serialize_day_values(data.get("full_schedule_dias", [])) or None
+    new_incremental_active = "true" if data.get("glpi_schedule_active", [""])[0] == "on" else "false"
+    new_incremental_days = serialize_day_values(data.get("schedule_dias", [])) or DEFAULT_GLPI_SCHEDULE_DAYS
+    new_full_active = "true" if full_schedule_active else "false"
+    connector_name = connector_display_name(config)
     db.add(
         AdminActionLog(
             user_id=user.id,
             username=user.username,
             action="glpi_schedule_save",
             status="success",
-            message="Agendamento GLPI atualizado",
+            message=(
+                f"Conector: {connector_name}; incremental: horários {old_incremental_times or '-'} -> "
+                f"{config.suggested_frequency or '-'}, dias {old_incremental_days or '-'} -> "
+                f"{new_incremental_days or '-'}, ativo {old_incremental_active} -> {new_incremental_active}; "
+                f"FULL: horários {old_full_times or '-'} -> {config.full_schedule_horarios or '-'}, "
+                f"dias {old_full_days or '-'} -> {config.full_schedule_dias or '-'}, "
+                f"ativo {old_full_active} -> {new_full_active}"
+            ),
+            table_name=connector_name,
         )
     )
     db.commit()
@@ -1144,7 +1184,9 @@ async def run_connector_import(
         db,
         user,
         "connector_run_start",
-        f"Importacao {import_label} iniciada para {connector_type or 'todos'}.",
+        f"Conector: {connector_display_name(config) if config else connector_type or 'Todos os conectores'}; "
+        f"tipo: {connector_type or '-'}; modo: {import_label}; origem: manual",
+        table_name=connector_display_name(config) if config else connector_type,
     )
     db.commit()
     background_tasks.add_task(run_connector_import_background, mode, table_id, user.username, user.id, connector_type)
